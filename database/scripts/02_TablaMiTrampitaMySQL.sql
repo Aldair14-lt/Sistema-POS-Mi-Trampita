@@ -45,6 +45,7 @@ CREATE TABLE `usuario_rol` (
   CONSTRAINT `fk_usuario_rol_usuario` FOREIGN KEY (`id_usuario`) REFERENCES `usuario` (`id_usuario`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_usuario_rol_rol` FOREIGN KEY (`id_rol`) REFERENCES `rol` (`id_rol`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB;
+CREATE UNIQUE INDEX `uk_usuario_rol` ON `usuario_rol` (`id_usuario`, `id_rol`);
 
 -- -----------------------------------------------------
 -- 3. MÓDULO DE PRODUCTOS E INVENTARIO
@@ -85,6 +86,11 @@ CREATE TABLE `producto` (
   CONSTRAINT `fk_producto_marca` FOREIGN KEY (`id_marca`) REFERENCES `marca` (`id_marca`) ON UPDATE CASCADE,
   CONSTRAINT `fk_producto_proveedor` FOREIGN KEY (`id_proveedor`) REFERENCES `proveedor` (`id_proveedor`) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
+ALTER TABLE `producto` ADD CONSTRAINT `ck_producto_precios` CHECK (`precio_compra` >= 0 AND `precio_venta` >= 0);
+ALTER TABLE `producto` ADD CONSTRAINT `ck_producto_stock` CHECK (`stock_actual` >= 0 AND `stock_minimo` >= 0);
+CREATE INDEX `idx_producto_categoria` ON `producto` (`id_categoria`);
+CREATE INDEX `idx_producto_marca` ON `producto` (`id_marca`);
+CREATE INDEX `idx_producto_proveedor` ON `producto` (`id_proveedor`);
 
 -- -----------------------------------------------------
 -- 4. MÓDULO DE CLIENTES, VENTAS Y COMPROBANTES
@@ -133,3 +139,10 @@ CREATE TABLE `detalle_venta` (
   CONSTRAINT `fk_detalle_venta_venta` FOREIGN KEY (`id_venta`) REFERENCES `venta` (`id_venta`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_detalle_venta_producto` FOREIGN KEY (`id_producto`) REFERENCES `producto` (`id_producto`) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
+CREATE UNIQUE INDEX `uk_cliente_numero_documento` ON `cliente` (`numero_documento`);
+CREATE UNIQUE INDEX `uk_tipo_comprobante_serie` ON `tipo_comprobante` (`nombre_tipo`, `serie`);
+CREATE UNIQUE INDEX `uk_venta_comprobante` ON `venta` (`id_tipo_comprobante`, `numero_comprobante`);
+CREATE INDEX `idx_venta_fecha` ON `venta` (`fecha_venta`);
+ALTER TABLE `detalle_venta` ADD CONSTRAINT `ck_detalle_cantidad` CHECK (`cantidad` > 0);
+ALTER TABLE `detalle_venta` ADD CONSTRAINT `ck_detalle_importes` CHECK (`precio_unitario` >= 0 AND `subtotal` >= 0);
+CREATE INDEX `idx_detalle_venta_producto` ON `detalle_venta` (`id_producto`);
