@@ -1,6 +1,7 @@
 package MiTrampita.SistemaPOS.entity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -15,11 +16,11 @@ import java.util.List;
 public class Venta {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id_venta") private Integer id;
-    @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "id_empresa", nullable = false) private Empresa empresa;
-    @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "id_usuario", nullable = false) private Usuario usuario;
-    @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "id_cliente", nullable = false) private Cliente cliente;
-    @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "id_tipo_comprobante", nullable = false) private TipoComprobante tipoComprobante;
-    @NotBlank @Column(name = "numero_comprobante", nullable = false, length = 50) private String numeroComprobante;
+    @ManyToOne(optional = false) @JoinColumn(name = "id_empresa", nullable = false) private Empresa empresa;
+    @ManyToOne(optional = false) @JoinColumn(name = "id_usuario", nullable = false) private Usuario usuario;
+    @ManyToOne(optional = false) @JoinColumn(name = "id_cliente", nullable = false) private Cliente cliente;
+    @ManyToOne(optional = false) @JoinColumn(name = "id_tipo_comprobante", nullable = false) private TipoComprobante tipoComprobante;
+    @NotBlank @Size(max = 50) @Column(name = "numero_comprobante", nullable = false, length = 50) private String numeroComprobante;
     @Column(nullable = false, precision = 10, scale = 2) private BigDecimal subtotal = BigDecimal.ZERO;
     @Column(name = "igv_impuesto", nullable = false, precision = 10, scale = 2) private BigDecimal igv = BigDecimal.ZERO;
     @Column(nullable = false, precision = 10, scale = 2) private BigDecimal total = BigDecimal.ZERO;

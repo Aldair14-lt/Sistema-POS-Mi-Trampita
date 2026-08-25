@@ -19,6 +19,8 @@ public class CatalogoController {
     private final ClienteRepository clientes;
     private final EmpresaRepository empresas;
     private final TipoComprobanteRepository comprobantes;
+    private final UsuarioRepository usuarios;
+    private final RolRepository roles;
 
     @GetMapping("/categorias") public List<Categoria> categorias() { return categorias.findAll(); }
     @PostMapping("/categorias") @ResponseStatus(HttpStatus.CREATED) public Categoria crearCategoria(@Valid @RequestBody Categoria value) { return categorias.save(value); }
@@ -32,6 +34,10 @@ public class CatalogoController {
     @PostMapping("/empresas") @ResponseStatus(HttpStatus.CREATED) public Empresa crearEmpresa(@Valid @RequestBody Empresa value) { return empresas.save(value); }
     @GetMapping("/tipos-comprobante") public List<TipoComprobante> comprobantes() { return comprobantes.findAll(); }
     @PostMapping("/tipos-comprobante") @ResponseStatus(HttpStatus.CREATED) public TipoComprobante crearComprobante(@Valid @RequestBody TipoComprobante value) { return comprobantes.save(value); }
+    @GetMapping("/usuarios") public List<Usuario> usuarios() { return usuarios.findAll(); }
+    @PostMapping("/usuarios") @ResponseStatus(HttpStatus.CREATED) public Usuario crearUsuario(@Valid @RequestBody Usuario value) { return usuarios.save(value); }
+    @GetMapping("/roles") public List<Rol> roles() { return roles.findAll(); }
+    @PostMapping("/roles") @ResponseStatus(HttpStatus.CREATED) public Rol crearRol(@Valid @RequestBody Rol value) { return roles.save(value); }
 
     @DeleteMapping("/categorias/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarCategoria(@PathVariable Integer id) { eliminar(categorias, id, "Categoría"); }
     @DeleteMapping("/marcas/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarMarca(@PathVariable Integer id) { eliminar(marcas, id, "Marca"); }
@@ -39,6 +45,8 @@ public class CatalogoController {
     @DeleteMapping("/clientes/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarCliente(@PathVariable Integer id) { eliminar(clientes, id, "Cliente"); }
     @DeleteMapping("/empresas/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarEmpresa(@PathVariable Integer id) { eliminar(empresas, id, "Empresa"); }
     @DeleteMapping("/tipos-comprobante/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarComprobante(@PathVariable Integer id) { eliminar(comprobantes, id, "Tipo de comprobante"); }
+    @DeleteMapping("/usuarios/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarUsuario(@PathVariable Integer id) { eliminar(usuarios, id, "Usuario"); }
+    @DeleteMapping("/roles/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarRol(@PathVariable Integer id) { eliminar(roles, id, "Rol"); }
 
     private void eliminar(org.springframework.data.jpa.repository.JpaRepository<?, Integer> repository, Integer id, String recurso) {
         if (!repository.existsById(id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, recurso + " no encontrado");

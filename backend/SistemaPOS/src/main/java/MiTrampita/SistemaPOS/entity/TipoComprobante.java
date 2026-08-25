@@ -2,6 +2,7 @@ package MiTrampita.SistemaPOS.entity;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.*;
 
 @Entity
@@ -10,7 +11,7 @@ import lombok.*;
 public class TipoComprobante {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id_tipo_comprobante") private Integer id;
-    @NotBlank @Column(name = "nombre_tipo", nullable = false, length = 50) private String nombre;
-    @NotBlank @Column(nullable = false, length = 10) private String serie;
-    @Column(length = 255) private String descripcion;
+    @NotBlank @Size(max = 50) @Column(name = "nombre_tipo", nullable = false, length = 50) private String nombre;
+    @NotBlank @Size(max = 10) @Column(nullable = false, length = 10) private String serie;
+    @Size(max = 255) @Column(length = 255) private String descripcion;
 }

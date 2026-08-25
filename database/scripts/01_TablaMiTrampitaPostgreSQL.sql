@@ -150,3 +150,19 @@ ALTER TABLE detalle_venta ADD CONSTRAINT ck_detalle_cantidad CHECK (cantidad > 0
 ALTER TABLE detalle_venta ADD CONSTRAINT ck_detalle_importes CHECK (precio_unitario >= 0 AND subtotal >= 0);
 ALTER TABLE detalle_venta ADD CONSTRAINT ck_detalle_subtotal CHECK (subtotal = cantidad * precio_unitario);
 CREATE INDEX idx_detalle_venta_producto ON detalle_venta (id_producto);
+
+INSERT INTO rol (nombre_rol, descripcion)
+VALUES ('ADMIN', 'Administrador')
+ON CONFLICT (nombre_rol) DO NOTHING;
+
+INSERT INTO usuario
+(usuario, "contraseña", nombre_completo, estado)
+VALUES ('admin', 'admin123', 'Administrador', 'activo')
+ON CONFLICT (usuario) DO NOTHING;
+
+INSERT INTO usuario_rol (id_usuario, id_rol)
+SELECT u.id_usuario, r.id_rol
+FROM usuario u, rol r
+WHERE u.usuario = 'admin'
+  AND r.nombre_rol = 'ADMIN'
+ON CONFLICT (id_usuario, id_rol) DO NOTHING;

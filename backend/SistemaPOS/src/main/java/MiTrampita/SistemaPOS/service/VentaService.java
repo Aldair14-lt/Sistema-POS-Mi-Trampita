@@ -9,7 +9,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -32,20 +34,33 @@ public class VentaService {
     public Venta registrar(Integer empresaId, Integer usuarioId, Integer clienteId, Integer comprobanteId,
                            String numeroComprobante, MetodoPago metodoPago, List<ItemVenta> items) {
         if (items == null || items.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La venta requiere productos");
+        if (numeroComprobante == null || numeroComprobante.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El número de comprobante es obligatorio");
+        if (numeroComprobante.length() > 50) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El número de comprobante no puede superar 50 caracteres");
         Venta venta = new Venta();
         venta.setEmpresa(empresaRepository.findById(empresaId).orElseThrow(() -> noEncontrado("Empresa")));
-        venta.setUsuario(usuarioRepository.findById(usuarioId).orElseThrow(() -> noEncontrado("Usuario")));
+        Usuario usuario = usuarioRepository.findById(usuarioId).orElseThrow(() -> noEncontrado("Usuario"));
+        if (usuario.getEstado() != EstadoUsuario.activo) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El usuario no está activo");
+        venta.setUsuario(usuario);
         venta.setCliente(clienteRepository.findById(clienteId).orElseThrow(() -> noEncontrado("Cliente")));
         venta.setTipoComprobante(comprobanteRepository.findById(comprobanteId).orElseThrow(() -> noEncontrado("Tipo de comprobante")));
-        venta.setNumeroComprobante(numeroComprobante);
+        venta.setNumeroComprobante(numeroComprobante.trim());
         venta.setMetodoPago(metodoPago == null ? MetodoPago.efectivo : metodoPago);
         BigDecimal subtotal = BigDecimal.ZERO;
+        Map<Integer, Integer> quantities = new LinkedHashMap<>();
         for (ItemVenta item : items) {
-            Producto producto = productoRepository.findByIdForUpdate(item.productoId()).orElseThrow(() -> noEncontrado("Producto"));
-            if (producto.getStockActual() < item.cantidad()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Stock insuficiente para " + producto.getNombre());
-            BigDecimal linea = producto.getPrecioVenta().multiply(BigDecimal.valueOf(item.cantidad()));
-            producto.setStockActual(producto.getStockActual() - item.cantidad());
-            venta.getDetalles().add(new DetalleVenta(null, venta, producto, item.cantidad(), producto.getPrecioVenta(), linea));
+            if (item == null || item.productoId() == null || item.cantidad() == null || item.cantidad() < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cada producto debe tener una cantidad mayor que cero");
+            }
+            quantities.merge(item.productoId(), item.cantidad(), Math::addExact);
+        }
+        for (Map.Entry<Integer, Integer> entry : quantities.entrySet()) {
+            Integer productId = entry.getKey();
+            Integer quantity = entry.getValue();
+            Producto producto = productoRepository.findByIdForUpdate(productId).orElseThrow(() -> noEncontrado("Producto"));
+            if (producto.getStockActual() < quantity) throw new ResponseStatusException(HttpStatus.CONFLICT, "Stock insuficiente para " + producto.getNombre());
+            BigDecimal linea = producto.getPrecioVenta().multiply(BigDecimal.valueOf(quantity)).setScale(2, RoundingMode.HALF_UP);
+            producto.setStockActual(producto.getStockActual() - quantity);
+            venta.getDetalles().add(new DetalleVenta(null, venta, producto, quantity, producto.getPrecioVenta(), linea));
             subtotal = subtotal.add(linea);
         }
         venta.setSubtotal(subtotal);
