@@ -25,7 +25,7 @@ CREATE TABLE empresa (
 -- -----------------------------------------------------
 CREATE TABLE rol (
   id_rol SERIAL PRIMARY KEY,
-  nombre_rol VARCHAR(50) NOT NULL,
+  nombre_rol VARCHAR(50) NOT NULL UNIQUE,
   descripcion VARCHAR(255) NULL
 );
 
@@ -36,7 +36,7 @@ CREATE TABLE usuario (
   nombre_completo VARCHAR(150) NOT NULL,
   correo_electronico VARCHAR(100) NULL,
   pin_caja VARCHAR(255) NULL,
-  estado estado_usuario DEFAULT 'activo',
+  estado estado_usuario NOT NULL DEFAULT 'activo',
   fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -130,6 +130,7 @@ CREATE TABLE venta (
   CONSTRAINT fk_venta_cliente FOREIGN KEY (id_cliente) REFERENCES cliente (id_cliente) ON UPDATE CASCADE,
   CONSTRAINT fk_venta_tipo_comprobante FOREIGN KEY (id_tipo_comprobante) REFERENCES tipo_comprobante (id_tipo_comprobante) ON UPDATE CASCADE
 );
+ALTER TABLE venta ADD CONSTRAINT ck_venta_importes CHECK (subtotal >= 0 AND igv_impuesto >= 0 AND total >= 0);
 
 CREATE TABLE detalle_venta (
   id_detalle_venta SERIAL PRIMARY KEY,
@@ -147,4 +148,5 @@ CREATE UNIQUE INDEX uk_venta_comprobante ON venta (id_tipo_comprobante, numero_c
 CREATE INDEX idx_venta_fecha ON venta (fecha_venta);
 ALTER TABLE detalle_venta ADD CONSTRAINT ck_detalle_cantidad CHECK (cantidad > 0);
 ALTER TABLE detalle_venta ADD CONSTRAINT ck_detalle_importes CHECK (precio_unitario >= 0 AND subtotal >= 0);
+ALTER TABLE detalle_venta ADD CONSTRAINT ck_detalle_subtotal CHECK (subtotal = cantidad * precio_unitario);
 CREATE INDEX idx_detalle_venta_producto ON detalle_venta (id_producto);

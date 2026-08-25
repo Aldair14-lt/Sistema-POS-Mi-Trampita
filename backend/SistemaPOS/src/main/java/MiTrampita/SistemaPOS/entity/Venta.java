@@ -2,6 +2,8 @@ package MiTrampita.SistemaPOS.entity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -21,7 +23,7 @@ public class Venta {
     @Column(nullable = false, precision = 10, scale = 2) private BigDecimal subtotal = BigDecimal.ZERO;
     @Column(name = "igv_impuesto", nullable = false, precision = 10, scale = 2) private BigDecimal igv = BigDecimal.ZERO;
     @Column(nullable = false, precision = 10, scale = 2) private BigDecimal total = BigDecimal.ZERO;
-    @Enumerated(EnumType.STRING) @Column(name = "metodo_pago", nullable = false, length = 20) private MetodoPago metodoPago = MetodoPago.efectivo;
+    @Enumerated(EnumType.STRING) @JdbcTypeCode(SqlTypes.NAMED_ENUM) @Column(name = "metodo_pago", nullable = false, length = 20) private MetodoPago metodoPago = MetodoPago.efectivo;
     @Column(name = "fecha_venta", insertable = false, updatable = false) private OffsetDateTime fechaVenta;
     @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<DetalleVenta> detalles = new ArrayList<>();

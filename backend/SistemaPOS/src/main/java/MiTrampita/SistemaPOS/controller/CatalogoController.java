@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 
 @RestController
@@ -31,4 +32,16 @@ public class CatalogoController {
     @PostMapping("/empresas") @ResponseStatus(HttpStatus.CREATED) public Empresa crearEmpresa(@Valid @RequestBody Empresa value) { return empresas.save(value); }
     @GetMapping("/tipos-comprobante") public List<TipoComprobante> comprobantes() { return comprobantes.findAll(); }
     @PostMapping("/tipos-comprobante") @ResponseStatus(HttpStatus.CREATED) public TipoComprobante crearComprobante(@Valid @RequestBody TipoComprobante value) { return comprobantes.save(value); }
+
+    @DeleteMapping("/categorias/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarCategoria(@PathVariable Integer id) { eliminar(categorias, id, "Categoría"); }
+    @DeleteMapping("/marcas/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarMarca(@PathVariable Integer id) { eliminar(marcas, id, "Marca"); }
+    @DeleteMapping("/proveedores/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarProveedor(@PathVariable Integer id) { eliminar(proveedores, id, "Proveedor"); }
+    @DeleteMapping("/clientes/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarCliente(@PathVariable Integer id) { eliminar(clientes, id, "Cliente"); }
+    @DeleteMapping("/empresas/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarEmpresa(@PathVariable Integer id) { eliminar(empresas, id, "Empresa"); }
+    @DeleteMapping("/tipos-comprobante/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void eliminarComprobante(@PathVariable Integer id) { eliminar(comprobantes, id, "Tipo de comprobante"); }
+
+    private void eliminar(org.springframework.data.jpa.repository.JpaRepository<?, Integer> repository, Integer id, String recurso) {
+        if (!repository.existsById(id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, recurso + " no encontrado");
+        repository.deleteById(id);
+    }
 }

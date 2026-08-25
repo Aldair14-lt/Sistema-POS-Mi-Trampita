@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 
 @Service
@@ -40,7 +41,7 @@ public class VentaService {
         venta.setMetodoPago(metodoPago == null ? MetodoPago.efectivo : metodoPago);
         BigDecimal subtotal = BigDecimal.ZERO;
         for (ItemVenta item : items) {
-            Producto producto = productoRepository.findById(item.productoId()).orElseThrow(() -> noEncontrado("Producto"));
+            Producto producto = productoRepository.findByIdForUpdate(item.productoId()).orElseThrow(() -> noEncontrado("Producto"));
             if (producto.getStockActual() < item.cantidad()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Stock insuficiente para " + producto.getNombre());
             BigDecimal linea = producto.getPrecioVenta().multiply(BigDecimal.valueOf(item.cantidad()));
             producto.setStockActual(producto.getStockActual() - item.cantidad());
@@ -48,8 +49,9 @@ public class VentaService {
             subtotal = subtotal.add(linea);
         }
         venta.setSubtotal(subtotal);
-        venta.setIgv(subtotal.multiply(IGV));
-        venta.setTotal(subtotal.add(venta.getIgv()));
+        BigDecimal igv = subtotal.multiply(IGV).setScale(2, RoundingMode.HALF_UP);
+        venta.setIgv(igv);
+        venta.setTotal(subtotal.add(igv).setScale(2, RoundingMode.HALF_UP));
         return ventaRepository.save(venta);
     }
 

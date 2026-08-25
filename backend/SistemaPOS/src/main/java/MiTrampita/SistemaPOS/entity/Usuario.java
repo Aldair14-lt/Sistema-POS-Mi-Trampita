@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.OffsetDateTime;
 
 @Entity
@@ -17,6 +19,6 @@ public class Usuario {
     @NotBlank @Column(name = "nombre_completo", nullable = false, length = 150) private String nombreCompleto;
     @Column(name = "correo_electronico", length = 100) private String correoElectronico;
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY) @Column(name = "pin_caja", length = 255) private String pinCaja;
-    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) private EstadoUsuario estado = EstadoUsuario.activo;
+    @Enumerated(EnumType.STRING) @JdbcTypeCode(SqlTypes.NAMED_ENUM) @Column(nullable = false, length = 20) private EstadoUsuario estado = EstadoUsuario.activo;
     @Column(name = "fecha_creacion", insertable = false, updatable = false) private OffsetDateTime fechaCreacion;
 }
