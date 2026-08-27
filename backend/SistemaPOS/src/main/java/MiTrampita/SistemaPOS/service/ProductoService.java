@@ -18,10 +18,15 @@ public class ProductoService {
     private final MarcaRepository marcas;
 
     @Transactional(readOnly = true)
-    public List<Producto> listar() { return repository.findAll(); }
+    public List<Producto> listar() {
+        return repository.findAll();
+    }
 
     @Transactional(readOnly = true)
-    public Producto obtener(Integer id) { return repository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado")); }
+    public Producto obtener(Integer id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
+    }
 
     @Transactional
     public Producto guardar(Producto producto) {
@@ -43,5 +48,7 @@ public class ProductoService {
     }
 
     @Transactional
-    public void eliminar(Integer id) { repository.delete(obtener(id)); }
+    public void eliminar(Integer id) {
+        repository.delete(obtener(id));
+    }
 }

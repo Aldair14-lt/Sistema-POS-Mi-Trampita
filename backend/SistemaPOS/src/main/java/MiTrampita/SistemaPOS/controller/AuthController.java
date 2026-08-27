@@ -26,27 +26,26 @@ public class AuthController {
     public LoginResponse login(@Valid @RequestBody LoginRequest req) {
         String username = req.usuario().trim();
         Usuario u = usuarios.findByUsuarioIgnoreCase(username)
-            .filter(x -> req.contrasena().equals(x.getContrasena()))
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Usuario o contraseña incorrectos"));
+                .filter(x -> req.contrasena().equals(x.getContrasena()))
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Usuario o contraseña incorrectos"));
 
         if (u.getEstado() != EstadoUsuario.activo) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Usuario inactivo o bloqueado");
         }
 
         List<String> roles = usuarioRoles.findAllByUsuario_Id(u.getId()).stream()
-            .map(ur -> ur.getRol().getNombre())
-            .toList();
-            
+                .map(ur -> ur.getRol().getNombre())
+                .toList();
+
         return new LoginResponse(u.getId(), u.getUsuario(), u.getNombreCompleto(), roles);
     }
-    
+
     public record LoginRequest(
-        @NotBlank(message = "El usuario es obligatorio")
-        @Size(max = 50, message = "El usuario no puede superar 50 caracteres")
-        String usuario,
-        @NotBlank(message = "La contraseña es obligatoria")
-        @Size(max = 255, message = "La contraseña no puede superar 255 caracteres")
-        String contrasena
-    ) {}
-    public record LoginResponse(Integer id, String usuario, String nombreCompleto, List<String> roles) {}
+            @NotBlank(message = "El usuario es obligatorio") @Size(max = 50, message = "El usuario no puede superar 50 caracteres") String usuario,
+            @NotBlank(message = "La contraseña es obligatoria") @Size(max = 255, message = "La contraseña no puede superar 255 caracteres") String contrasena) {
+    }
+
+    public record LoginResponse(Integer id, String usuario, String nombreCompleto, List<String> roles) {
+    }
 }
