@@ -12,6 +12,8 @@ import java.math.RoundingMode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -31,7 +33,7 @@ public class VentaService {
     public Venta obtener(Integer id) { return ventaRepository.findById(id).orElseThrow(() -> noEncontrado("Venta")); }
 
     @Transactional
-    public Venta registrar(Integer empresaId, Integer usuarioId, Integer clienteId, Integer comprobanteId,
+    public Venta registrar(Integer empresaId, Integer usuarioId, Integer clienteId, ClienteData clienteData, Integer comprobanteId,
                            String numeroComprobante, MetodoPago metodoPago, List<ItemVenta> items) {
         if (items == null || items.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La venta requiere productos");
         if (numeroComprobante == null || numeroComprobante.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El número de comprobante es obligatorio");
@@ -41,8 +43,10 @@ public class VentaService {
         Usuario usuario = usuarioRepository.findById(usuarioId).orElseThrow(() -> noEncontrado("Usuario"));
         if (usuario.getEstado() != EstadoUsuario.activo) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El usuario no está activo");
         venta.setUsuario(usuario);
-        venta.setCliente(clienteRepository.findById(clienteId).orElseThrow(() -> noEncontrado("Cliente")));
+        Cliente cliente = resolverCliente(clienteId, clienteData);
+        venta.setCliente(cliente);
         venta.setTipoComprobante(comprobanteRepository.findById(comprobanteId).orElseThrow(() -> noEncontrado("Tipo de comprobante")));
+        validarDatosCliente(venta.getTipoComprobante().getNombre(), cliente);
         venta.setNumeroComprobante(numeroComprobante.trim());
         venta.setMetodoPago(metodoPago == null ? MetodoPago.efectivo : metodoPago);
         BigDecimal subtotal = BigDecimal.ZERO;
@@ -71,5 +75,31 @@ public class VentaService {
     }
 
     private ResponseStatusException noEncontrado(String recurso) { return new ResponseStatusException(HttpStatus.NOT_FOUND, recurso + " no encontrado"); }
+    private Cliente resolverCliente(Integer clienteId, ClienteData data) {
+        if (clienteId != null) return clienteRepository.findById(clienteId).orElseThrow(() -> noEncontrado("Cliente"));
+        if (data == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Los datos del cliente son obligatorios");
+        String document = data.numeroDocumento().trim();
+        Cliente cliente = clienteRepository.findByNumeroDocumento(document).orElseGet(Cliente::new);
+        cliente.setNumeroDocumento(document);
+        cliente.setNombresRazonSocial(data.nombresRazonSocial().trim());
+        cliente.setDireccion(blankToNull(data.direccion()));
+        cliente.setTelefono(blankToNull(data.telefono()));
+        cliente.setCorreo(blankToNull(data.correo()));
+        return clienteRepository.save(cliente);
+    }
+
+    private void validarDatosCliente(String receiptName, Cliente cliente) {
+        String name = receiptName == null ? "" : receiptName.toUpperCase(Locale.ROOT);
+        if (name.contains("FACTURA") && !Pattern.matches("\\d{11}", cliente.getNumeroDocumento())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Para una factura el documento debe ser un RUC de 11 dígitos");
+        }
+        if (cliente.getNombresRazonSocial() == null || cliente.getNombresRazonSocial().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre o razón social del cliente es obligatorio");
+        }
+    }
+
+    private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+
+    public record ClienteData(String numeroDocumento, String nombresRazonSocial, String direccion, String telefono, String correo) { }
     public record ItemVenta(Integer productoId, Integer cantidad) { }
 }

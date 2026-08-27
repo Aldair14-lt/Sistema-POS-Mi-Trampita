@@ -3,9 +3,10 @@ import {
   Archive, ArrowRight, BadgeDollarSign, BarChart3, Boxes, BriefcaseBusiness, ChevronRight,
   CircleUserRound, ClipboardList, Command, LayoutDashboard, LogOut, Menu, Package,
   Plus, ReceiptText, Search, Settings2, ShieldCheck, Store, Tags, Truck, UserRound,
-  UsersRound, X, Zap, Minus, ShoppingCart, CheckCircle2
+  UsersRound, X, Zap, Minus, ShoppingCart, CheckCircle2, Pencil, Trash2
 } from 'lucide-react'
 import { api } from './api'
+import SalesPos from './SalesPos'
 
 const resources = {
   productos: { label: 'Productos', singular: 'producto', endpoint: '/api/productos', icon: Package, columns: [['nombre', 'Producto'], ['codigoBarras', 'Código'], ['precioVenta', 'Precio'], ['stockActual', 'Stock']] },
@@ -77,7 +78,17 @@ function Shell({ session, view, setView, mobileNav, setMobileNav, onLogout }) {
   <div className="user-card"><div className="avatar">{session.nombreCompleto?.charAt(0).toUpperCase() || 'U'}</div><div><strong title={session.nombreCompleto}>{session.usuario}</strong><small>{isAdmin ? 'Administrador' : 'Vendedor'}</small></div><button className="icon-button" onClick={onLogout} title="Cerrar sesión"><LogOut size={16} /></button></div></div></aside>{mobileNav && <button className="scrim" onClick={() => setMobileNav(false)} aria-label="Cerrar menú" />}<main className="main-content"><header className="topbar"><button className="icon-button menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menú"><Menu size={21} /></button><div className="crumb"><Command size={16} /><span>/</span><strong>{view === 'dashboard' ? 'Inicio' : view === 'ventas' ? 'Ventas' : resources[view]?.label}</strong></div><div className="top-actions"><span className="connection"><span /> API conectada</span><button className="icon-button" title="Perfil" onClick={() => { if(isAdmin) setView('usuarios') }}><CircleUserRound size={19} /></button></div></header><div className="content">{view === 'dashboard' ? <Dashboard setView={setView} /> : view === 'ventas' ? <Sales session={session} /> : <ResourceView resource={resources[view]} />}</div></main></div>
 }
 
-function Dashboard({ setView }) {
+function Dashboard({ setView }) { return <><DashboardLegacy setView={setView} /><RecentSales /></> }
+
+function RecentSales() {
+  const [sales, setSales] = useState([])
+  const [error, setError] = useState('')
+  useEffect(() => { api.list('/api/ventas').then(setSales).catch((err) => setError(err.message)) }, [])
+  const recent = [...sales].sort((a, b) => new Date(b.fechaVenta || 0) - new Date(a.fechaVenta || 0)).slice(0, 5)
+  return <section className="panel recent-panel"><div className="panel-head"><div><span className="eyebrow">Actividad</span><h3>Últimas ventas</h3></div><ReceiptText size={20} className="accent-icon" /></div>{error ? <div className="api-error">No se pudo cargar la actividad.</div> : recent.length ? <div className="recent-sales">{recent.map((sale) => <div className="recent-sale" key={sale.id}><span className="recent-sale-icon"><ReceiptText size={15} /></span><div><strong>{sale.tipoComprobante?.nombre || 'Comprobante'} · {sale.numeroComprobante}</strong><small>{sale.cliente?.nombresRazonSocial || 'Cliente'} · {sale.fechaVenta ? new Date(sale.fechaVenta).toLocaleString('es-PE') : 'Fecha pendiente'}</small></div><b>S/ {Number(sale.total || 0).toFixed(2)}</b></div>)}</div> : <EmptyState text="Todavía no hay ventas registradas." />}</section>
+}
+
+function DashboardLegacy({ setView }) {
   const [products, setProducts] = useState([])
   const [sales, setSales] = useState([])
   useEffect(() => { api.list('/api/productos').then(setProducts).catch(() => setProducts([])); api.list('/api/ventas').then(setSales).catch(() => setSales([])) }, [])
@@ -92,32 +103,45 @@ function ResourceView({ resource }) {
   const [items, setItems] = useState([])
   const [query, setQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const load = () => { setLoading(true); api.list(resource.endpoint).then(setItems).catch((err) => setError(err.message)).finally(() => setLoading(false)) }
   useEffect(load, [resource.endpoint])
   const filtered = useMemo(() => items.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase())), [items, query])
-  return <><div className="page-heading compact"><div><span className="eyebrow">Directorio / {resource.label}</span><h1>{resource.label}</h1><p className="muted">Gestiona la información conectada a tu base de datos.</p></div><button className="primary-button" onClick={() => setShowForm(true)}><Plus size={17} /> Nuevo {resource.singular}</button></div><section className="panel table-panel"><div className="table-toolbar"><div className="search-box"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Buscar ${resource.label.toLowerCase()}...`} /></div><span className="result-count">{filtered.length} registros</span></div>{error && <div className="api-error">No se pudo conectar con el backend: {error}</div>}{loading ? <div className="loading">Cargando datos...</div> : <DataTable resource={resource} items={filtered} onRefresh={load} />}</section>{showForm && <ResourceForm resource={resource} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load() }} />}</>
+  const openNew = () => { setEditing(null); setShowForm(true) }
+  const openEdit = (item) => { setEditing(item); setShowForm(true) }
+  return <><div className="page-heading compact"><div><span className="eyebrow">Directorio / {resource.label}</span><h1>{resource.label}</h1><p className="muted">Gestiona la información conectada a tu base de datos.</p></div><button className="primary-button" onClick={openNew}><Plus size={17} /> Nuevo {resource.singular}</button></div><section className="panel table-panel"><div className="table-toolbar"><div className="search-box"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Buscar ${resource.label.toLowerCase()}...`} /></div><span className="result-count">{filtered.length} registros</span></div>{error && <div className="api-error">{error}</div>}{loading ? <div className="loading">Cargando datos...</div> : <DataTable resource={resource} items={filtered} onRefresh={load} onEdit={openEdit} onError={setError} />}</section>{showForm && <ResourceForm key={`${resource.endpoint}-${editing?.id || 'new'}`} resource={resource} item={editing} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); setEditing(null); load() }} />}</>
 }
 
-function DataTable({ resource, items, onRefresh }) { return items.length ? <div className="table-wrap"><table><thead><tr>{resource.columns.map(([, label]) => <th key={label}>{label}</th>)}<th /></tr></thead><tbody>{items.map((item) => <tr key={item.id}><>{resource.columns.map(([key]) => <td key={key}>{key.includes('precio') ? 'S/ ' + Number(item[key] || 0).toFixed(2) : (typeof item[key] === 'object' && item[key] !== null ? item[key].nombre || item[key].razonSocial || item[key].nombreCategoria || item[key].nombreMarca || 'Objeto' : item[key] ?? '—')}</td>)}</><td><button className="row-action" onClick={() => { if (confirm('¿Eliminar este registro?')) api.remove(`${resource.endpoint}/${item.id}`).then(onRefresh).catch(() => {}) }} title="Eliminar"><X size={15} /></button></td></tr>)}</tbody></table></div> : <EmptyState text="No hay registros para mostrar." /> }
+function DataTable({ resource, items, onRefresh, onEdit, onError }) { return items.length ? <div className="table-wrap"><table><thead><tr>{resource.columns.map(([, label]) => <th key={label}>{label}</th>)}<th>Acciones</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><>{resource.columns.map(([key]) => <td key={key}>{key.includes('precio') ? 'S/ ' + Number(item[key] || 0).toFixed(2) : (typeof item[key] === 'object' && item[key] !== null ? item[key].nombre || item[key].razonSocial || item[key].nombreCategoria || item[key].nombreMarca || 'Objeto' : item[key] ?? '—')}</td>)}</><td className="row-actions"><button className="row-action" onClick={() => onEdit(item)} title={`Modificar ${resource.singular}`}><Pencil size={15} /></button><button className="row-action danger" onClick={() => { if (confirm(`¿Eliminar este ${resource.singular}? Esta acción no se puede deshacer.`)) api.remove(`${resource.endpoint}/${item.id}`).then(onRefresh).catch((err) => onError(err.message || 'No se pudo eliminar el registro.')) }} title={`Eliminar ${resource.singular}`}><Trash2 size={15} /></button></td></tr>)}</tbody></table></div> : <EmptyState text="No hay registros para mostrar." /> }
 function EmptyState({ text }) { return <div className="empty"><ClipboardList size={22} /><span>{text}</span></div> }
 
-function ResourceForm({ resource, onClose, onSaved }) {
+function ResourceForm({ resource, item, onClose, onSaved }) {
   const initialForm = useMemo(() => {
+    let base
     switch (resource.label) {
-      case 'Categorías': return { nombre: '', descripcion: '' };
-      case 'Marcas': return { nombre: '' };
-      case 'Clientes': return { numeroDocumento: '', nombresRazonSocial: '', direccion: '', telefono: '', correo: '' };
-      case 'Proveedores': return { rucDni: '', razonSocial: '', telefono: '', correo: '' };
-      case 'Usuarios': return { usuario: '', contrasena: '', nombreCompleto: '', correoElectronico: '', pinCaja: '', estado: 'activo' };
-      case 'Roles': return { nombre: '', descripcion: '' };
-      case 'Empresas': return { ruc: '', razonSocial: '', nombreComercial: '', direccion: '', telefono: '', correo: '' };
-      case 'Comprobantes': return { nombre: '', serie: '', descripcion: '' };
-      case 'Productos': return { categoriaId: '', marcaId: '', proveedorId: '', codigoBarras: '', nombre: '', descripcion: '', precioCompra: 0, precioVenta: 0, stockActual: 0, stockMinimo: 5 };
-      default: return {};
+      case 'Categorías': base = { nombre: '', descripcion: '' }; break
+      case 'Marcas': base = { nombre: '' }; break
+      case 'Clientes': base = { numeroDocumento: '', nombresRazonSocial: '', direccion: '', telefono: '', correo: '' }; break
+      case 'Proveedores': base = { rucDni: '', razonSocial: '', telefono: '', correo: '' }; break
+      case 'Usuarios': base = { usuario: '', contrasena: '', nombreCompleto: '', correoElectronico: '', pinCaja: '', estado: 'activo' }; break
+      case 'Roles': base = { nombre: '', descripcion: '' }; break
+      case 'Empresas': base = { ruc: '', razonSocial: '', nombreComercial: '', direccion: '', telefono: '', correo: '' }; break
+      case 'Comprobantes': base = { nombre: '', serie: '', descripcion: '' }; break
+      case 'Productos': base = { categoriaId: '', marcaId: '', proveedorId: '', codigoBarras: '', nombre: '', descripcion: '', precioCompra: 0, precioVenta: 0, stockActual: 0, stockMinimo: 5 }; break
+      default: base = {}
     }
-  }, [resource.label]);
+    if (!item) return base
+    const values = { ...base }
+    Object.keys(base).forEach((field) => { if (field !== 'contrasena') values[field] = item[field] ?? '' })
+    if (resource.label === 'Productos') {
+      values.categoriaId = item.categoria?.id ?? ''
+      values.marcaId = item.marca?.nombre?.toLowerCase() === 'sin marca' ? '' : (item.marca?.id ?? '')
+      values.proveedorId = item.proveedor?.id ?? ''
+    }
+    return values
+  }, [resource.label, item]);
 
   const [form, setForm] = useState(initialForm)
   const [error, setError] = useState('')
@@ -138,20 +162,21 @@ function ResourceForm({ resource, onClose, onSaved }) {
   async function submit(event) {
     event.preventDefault()
     setError('')
-    const requiredText = ['nombre', 'codigoBarras', 'nombresRazonSocial', 'numeroDocumento', 'rucDni', 'razonSocial', 'ruc', 'direccion', 'usuario', 'contrasena', 'nombreCompleto', 'serie']
+    const requiredText = ['nombre', 'codigoBarras', 'nombresRazonSocial', 'numeroDocumento', 'rucDni', 'razonSocial', 'ruc', 'direccion', 'usuario', 'nombreCompleto', 'serie']
+    if (!item && 'contrasena' in form) requiredText.push('contrasena')
     const missing = requiredText.find((field) => field in form && !String(form[field]).trim())
     if (missing) return setError('Completa todos los campos obligatorios.')
-    if ('contrasena' in form && form.contrasena.length < 4) return setError('La contraseña debe tener al menos 4 caracteres.')
+    if ('contrasena' in form && form.contrasena && form.contrasena.length < 4) return setError('La contraseña debe tener al menos 4 caracteres.')
     if ('correo' in form && form.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) return setError('Ingresa un correo válido.')
     if ('correoElectronico' in form && form.correoElectronico && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correoElectronico)) return setError('Ingresa un correo válido.')
     const numericFields = ['precioCompra', 'precioVenta', 'stockActual', 'stockMinimo']
     if (numericFields.some((field) => field in form && (!Number.isFinite(Number(form[field])) || Number(form[field]) < 0))) return setError('Los precios y el stock deben ser números mayores o iguales a cero.')
-    if (resource.label === 'Productos' && ['categoriaId', 'marcaId', 'proveedorId'].some((field) => !Number.isInteger(Number(form[field])) || Number(form[field]) <= 0)) return setError('Selecciona categoría, marca y proveedor.')
+    if (resource.label === 'Productos' && ['categoriaId', 'proveedorId'].some((field) => !Number.isInteger(Number(form[field])) || Number(form[field]) <= 0)) return setError('Selecciona categoría y proveedor.')
     try {
       const cleanForm = Object.fromEntries(Object.entries(form).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]))
       const payload = resource.label === 'Productos' ? {
         categoria: { id: Number(form.categoriaId) }, 
-        marca: { id: Number(form.marcaId) }, 
+        marca: form.marcaId ? { id: Number(form.marcaId) } : null, 
         proveedor: { id: Number(form.proveedorId) }, 
         codigoBarras: form.codigoBarras, 
         nombre: form.nombre, 
@@ -162,7 +187,8 @@ function ResourceForm({ resource, onClose, onSaved }) {
         stockMinimo: Number(form.stockMinimo) 
       } : cleanForm;
       
-      await api.create(resource.endpoint, payload); 
+      if (item) await api.update(`${resource.endpoint}/${item.id}`, payload)
+      else await api.create(resource.endpoint, payload)
       onSaved();
     } catch (err) { 
       setError(err.message || 'No se pudo guardar el registro.')
@@ -170,17 +196,17 @@ function ResourceForm({ resource, onClose, onSaved }) {
   }
   
   const fields = Object.keys(form)
-  return <div className="modal-backdrop"><section className="modal" style={{maxHeight: '90vh', overflowY: 'auto'}}><div className="modal-head"><div><span className="eyebrow">Nuevo registro</span><h2>{resource.singular}</h2></div><button className="icon-button" onClick={onClose} aria-label="Cerrar"><X size={19} /></button></div><form onSubmit={submit} className="form-grid">
+  return <div className="modal-backdrop"><section className="modal" style={{maxHeight: '90vh', overflowY: 'auto'}}><div className="modal-head"><div><span className="eyebrow">{item ? 'Modificar registro' : 'Nuevo registro'}</span><h2>{resource.singular}</h2></div><button className="icon-button" onClick={onClose} aria-label="Cerrar"><X size={19} /></button></div><form onSubmit={submit} className="form-grid">
     {fields.map((field) => {
       const isSelect = resource.label === 'Productos' && ['categoriaId', 'marcaId', 'proveedorId'].includes(field);
       const labelText = field.replace(/[A-Z]/g, (letter) => ` ${letter}`).replace(/^./, (letter) => letter.toUpperCase());
-      const isRequired = ['nombre', 'codigoBarras', 'nombresRazonSocial', 'numeroDocumento', 'rucDni', 'razonSocial', 'ruc', 'direccion', 'categoriaId', 'marcaId', 'proveedorId', 'usuario', 'contrasena', 'nombreCompleto', 'serie'].includes(field);
+      const isRequired = ['nombre', 'codigoBarras', 'nombresRazonSocial', 'numeroDocumento', 'rucDni', 'razonSocial', 'ruc', 'direccion', 'categoriaId', 'proveedorId', 'usuario', 'nombreCompleto', 'serie'].includes(field) || (field === 'contrasena' && !item);
       const isNumber = field.toLowerCase().includes('precio') || field.toLowerCase().includes('stock');
 
       if (isSelect) {
         const options = field === 'categoriaId' ? relations.categorias : field === 'marcaId' ? relations.marcas : relations.proveedores;
         const nameField = field === 'categoriaId' ? 'nombre' : field === 'marcaId' ? 'nombre' : 'razonSocial';
-        return <label key={field}>{labelText}
+        return <label key={field}>{labelText}{field === 'marcaId' && <small className="form-hint">Solo necesario para bebidas; las comidas usan “Sin marca”.</small>}
           <select required={isRequired} value={form[field]} onChange={(e) => update(field, e.target.value)} style={{border: '1px solid var(--line)', padding: '14px 15px', borderRadius: '4px', background: 'var(--paper)'}}>
             <option value="">Seleccione una opción</option>
             {options.map(opt => <option key={opt.id} value={opt.id}>{opt[nameField]}</option>)}
@@ -205,7 +231,9 @@ function ResourceForm({ resource, onClose, onSaved }) {
     {error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit">Guardar <ArrowRight size={16} /></button></div></form></section></div>
 }
 
-function Sales({ session }) { 
+function Sales({ session }) { return <SalesPos session={session} /> }
+
+function SalesLegacy({ session }) { 
   const [products, setProducts] = useState([])
   const [clients, setClients] = useState([])
   const [empresas, setEmpresas] = useState([])
