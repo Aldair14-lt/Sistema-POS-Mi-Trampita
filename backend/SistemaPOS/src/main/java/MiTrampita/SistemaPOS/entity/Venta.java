@@ -35,6 +35,9 @@ public class Venta {
     @ManyToOne(optional = false)
     @JoinColumn(name = "id_tipo_comprobante", nullable = false)
     private TipoComprobante tipoComprobante;
+    @ManyToOne
+    @JoinColumn(name = "id_mesa")
+    private Mesa mesa;
     @NotBlank
     @Size(max = 50)
     @Column(name = "numero_comprobante", nullable = false, length = 50)
@@ -49,6 +52,10 @@ public class Venta {
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "metodo_pago", nullable = false, length = 20)
     private MetodoPago metodoPago = MetodoPago.efectivo;
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "estado_venta", nullable = false, length = 20)
+    private EstadoVenta estado = EstadoVenta.ABIERTA;
     @Column(name = "fecha_venta", insertable = false, updatable = false)
     private OffsetDateTime fechaVenta;
     @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL, orphanRemoval = true)

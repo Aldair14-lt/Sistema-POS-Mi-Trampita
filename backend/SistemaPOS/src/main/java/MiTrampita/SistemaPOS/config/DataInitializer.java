@@ -7,12 +7,14 @@ import MiTrampita.SistemaPOS.entity.UsuarioRol;
 import MiTrampita.SistemaPOS.entity.TipoComprobante;
 import MiTrampita.SistemaPOS.entity.Categoria;
 import MiTrampita.SistemaPOS.entity.Marca;
+import MiTrampita.SistemaPOS.entity.Mesa;
 import MiTrampita.SistemaPOS.repositorio.CategoriaRepository;
 import MiTrampita.SistemaPOS.repositorio.MarcaRepository;
 import MiTrampita.SistemaPOS.repositorio.RolRepository;
 import MiTrampita.SistemaPOS.repositorio.TipoComprobanteRepository;
 import MiTrampita.SistemaPOS.repositorio.UsuarioRepository;
 import MiTrampita.SistemaPOS.repositorio.UsuarioRolRepository;
+import MiTrampita.SistemaPOS.repositorio.MesaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
@@ -25,6 +27,7 @@ public class DataInitializer implements CommandLineRunner {
     private final UsuarioRepository usuarios;
     private final RolRepository roles;
     private final UsuarioRolRepository usuarioRoles;
+    private final MesaRepository mesas;
     private final TipoComprobanteRepository comprobantes;
     private final CategoriaRepository categorias;
     private final MarcaRepository marcas;
@@ -61,6 +64,7 @@ public class DataInitializer implements CommandLineRunner {
         ensureCategory("Comidas", "Platos, combos y alimentos preparados");
         ensureCategory("Bebidas", "Bebidas frías y calientes");
         ensureBrand("Sin marca");
+        ensureTables();
     }
 
     private void ensureReceipt(String name, String series, String description) {
@@ -87,6 +91,18 @@ public class DataInitializer implements CommandLineRunner {
             Marca brand = new Marca();
             brand.setNombre(name);
             marcas.save(brand);
+        }
+    }
+
+    private void ensureTables() {
+        for (int number = 1; number <= 10; number++) {
+            final int tableNumber = number;
+            if (mesas.findByNumero(tableNumber).isEmpty()) {
+                Mesa mesa = new Mesa();
+                mesa.setNumero(tableNumber);
+                mesa.setCapacidad(4);
+                mesas.save(mesa);
+            }
         }
     }
 }

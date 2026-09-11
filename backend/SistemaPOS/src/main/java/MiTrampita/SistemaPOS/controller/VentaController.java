@@ -36,7 +36,17 @@ public class VentaController {
                         request.cliente().telefono(), request.cliente().correo());
         return service.registrar(request.empresaId(), request.usuarioId(), request.clienteId(), client,
                 request.tipoComprobanteId(), request.numeroComprobante(), request.metodoPago(),
-                request.itemVentaList());
+                request.mesaId(), request.itemVentaList());
+    }
+
+    @PatchMapping("/{id}/items")
+    public Venta agregarItems(@PathVariable Integer id, @Valid @RequestBody ActualizarItemsRequest request) {
+        return service.agregarItems(id, request.itemVentaList(), request.metodoPago());
+    }
+
+    @PatchMapping("/{id}/cerrar")
+    public Venta cerrar(@PathVariable Integer id, @Valid @RequestBody CerrarVentaRequest request) {
+        return service.cerrar(id, request.metodoPago(), request.montoRecibido());
     }
 
     public record VentaRequest(@NotNull(message = "La empresa es obligatoria") Integer empresaId,
@@ -46,6 +56,7 @@ public class VentaController {
             @NotNull(message = "El tipo de comprobante es obligatorio") Integer tipoComprobanteId,
             @NotBlank(message = "El número de comprobante es obligatorio") @Size(max = 50, message = "El número de comprobante no puede superar 50 caracteres") String numeroComprobante,
             @NotNull(message = "El método de pago es obligatorio") MetodoPago metodoPago,
+            Integer mesaId,
             @NotEmpty(message = "La venta requiere al menos un producto") @Valid List<ItemRequest> items) {
         @AssertTrue(message = "Selecciona un cliente o completa sus datos")
         public boolean tieneCliente() {
@@ -67,5 +78,21 @@ public class VentaController {
 
     public record ItemRequest(@NotNull(message = "El producto es obligatorio") Integer productoId,
             @NotNull(message = "La cantidad es obligatoria") @Min(value = 1, message = "La cantidad debe ser mayor que cero") @Max(value = 100000, message = "La cantidad es demasiado grande") Integer cantidad) {
+    }
+
+    public record ActualizarItemsRequest(
+            @NotEmpty(message = "La comanda requiere al menos un producto") @Valid List<ItemRequest> items,
+            MetodoPago metodoPago) {
+        List<VentaService.ItemVenta> itemVentaList() {
+            return items.stream()
+                    .map(item -> new VentaService.ItemVenta(item.productoId(), item.cantidad()))
+                    .toList();
+        }
+    }
+
+    public record CerrarVentaRequest(
+            @NotNull(message = "El mÃ©todo de pago es obligatorio") MetodoPago metodoPago,
+            @DecimalMin(value = "0.00", message = "El monto recibido no puede ser negativo")
+            java.math.BigDecimal montoRecibido) {
     }
 }

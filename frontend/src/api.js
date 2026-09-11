@@ -27,5 +27,6 @@ export const api = {
   list: (path) => request(path),
   create: (path, data) => request(path, { method: 'POST', body: JSON.stringify(data) }),
   update: (path, data) => request(path, { method: 'PUT', body: JSON.stringify(data) }),
+  patch: (path, data) => request(path, { method: 'PATCH', body: JSON.stringify(data) }),
   remove: (path) => request(path, { method: 'DELETE' }),
 }

@@ -17,10 +17,12 @@ const resources = {
   usuarios: { label: 'Usuarios', singular: 'usuario', endpoint: '/api/usuarios', icon: UserRound, columns: [['usuario', 'Usuario'], ['nombreCompleto', 'Nombre'], ['correoElectronico', 'Correo'], ['estado', 'Estado']] },
   roles: { label: 'Roles', singular: 'rol', endpoint: '/api/roles', icon: ShieldCheck, columns: [['nombre', 'Rol'], ['descripcion', 'Descripción']] },
   empresas: { label: 'Empresas', singular: 'empresa', endpoint: '/api/empresas', icon: BriefcaseBusiness, columns: [['ruc', 'RUC'], ['razonSocial', 'Razón social'], ['telefono', 'Teléfono']] },
-  'tipos-comprobante': { label: 'Comprobantes', singular: 'tipo de comprobante', endpoint: '/api/tipos-comprobante', icon: ReceiptText, columns: [['nombre', 'Tipo'], ['serie', 'Serie']] }
+  'tipos-comprobante': { label: 'Comprobantes', singular: 'tipo de comprobante', endpoint: '/api/tipos-comprobante', icon: ReceiptText, columns: [['nombre', 'Tipo'], ['serie', 'Serie']] },
+  mesas: { label: 'Mesas', singular: 'mesa', endpoint: '/api/mesas', icon: Store, columns: [['numero', 'Mesa'], ['capacidad', 'Capacidad'], ['estado', 'Estado']] }
 }
 
 const navGroups = [
+  { title: 'SalÃ³n', items: [['mesas', 'Mesas', Store]] },
   { title: 'Operación', items: [['dashboard', 'Inicio', LayoutDashboard], ['ventas', 'Ventas', ReceiptText], ['productos', 'Productos', Package]] },
   { title: 'Directorio', items: [['clientes', 'Clientes', UsersRound], ['proveedores', 'Proveedores', Truck], ['categorias', 'Categorías', Tags], ['marcas', 'Marcas', Archive]] },
   { title: 'Administración', reqAdmin: true, items: [['usuarios', 'Usuarios', UserRound], ['roles', 'Roles', ShieldCheck], ['empresas', 'Empresas', BriefcaseBusiness], ['tipos-comprobante', 'Comprobantes', ReceiptText]] },
@@ -129,6 +131,7 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
       case 'Roles': base = { nombre: '', descripcion: '' }; break
       case 'Empresas': base = { ruc: '', razonSocial: '', nombreComercial: '', direccion: '', telefono: '', correo: '' }; break
       case 'Comprobantes': base = { nombre: '', serie: '', descripcion: '' }; break
+      case 'Mesas': base = { numero: '', capacidad: 4, estado: 'LIBRE' }; break
       case 'Productos': base = { categoriaId: '', marcaId: '', proveedorId: '', codigoBarras: '', nombre: '', descripcion: '', precioCompra: 0, precioVenta: 0, stockActual: 0, stockMinimo: 5 }; break
       default: base = {}
     }
@@ -169,7 +172,7 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
     if ('contrasena' in form && form.contrasena && form.contrasena.length < 4) return setError('La contraseña debe tener al menos 4 caracteres.')
     if ('correo' in form && form.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) return setError('Ingresa un correo válido.')
     if ('correoElectronico' in form && form.correoElectronico && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correoElectronico)) return setError('Ingresa un correo válido.')
-    const numericFields = ['precioCompra', 'precioVenta', 'stockActual', 'stockMinimo']
+    const numericFields = ['precioCompra', 'precioVenta', 'stockActual', 'stockMinimo', 'numero', 'capacidad']
     if (numericFields.some((field) => field in form && (!Number.isFinite(Number(form[field])) || Number(form[field]) < 0))) return setError('Los precios y el stock deben ser números mayores o iguales a cero.')
     if (resource.label === 'Productos' && ['categoriaId', 'proveedorId'].some((field) => !Number.isInteger(Number(form[field])) || Number(form[field]) <= 0)) return setError('Selecciona categoría y proveedor.')
     try {
@@ -185,6 +188,10 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
         precioVenta: Number(form.precioVenta), 
         stockActual: Number(form.stockActual), 
         stockMinimo: Number(form.stockMinimo) 
+      } : resource.label === 'Mesas' ? {
+        numero: Number(form.numero),
+        capacidad: Number(form.capacidad),
+        estado: form.estado
       } : cleanForm;
       
       if (item) await api.update(`${resource.endpoint}/${item.id}`, payload)
@@ -200,8 +207,8 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
     {fields.map((field) => {
       const isSelect = resource.label === 'Productos' && ['categoriaId', 'marcaId', 'proveedorId'].includes(field);
       const labelText = field.replace(/[A-Z]/g, (letter) => ` ${letter}`).replace(/^./, (letter) => letter.toUpperCase());
-      const isRequired = ['nombre', 'codigoBarras', 'nombresRazonSocial', 'numeroDocumento', 'rucDni', 'razonSocial', 'ruc', 'direccion', 'categoriaId', 'proveedorId', 'usuario', 'nombreCompleto', 'serie'].includes(field) || (field === 'contrasena' && !item);
-      const isNumber = field.toLowerCase().includes('precio') || field.toLowerCase().includes('stock');
+      const isRequired = ['nombre', 'codigoBarras', 'nombresRazonSocial', 'numeroDocumento', 'rucDni', 'razonSocial', 'ruc', 'direccion', 'categoriaId', 'proveedorId', 'usuario', 'nombreCompleto', 'serie', 'numero', 'capacidad'].includes(field) || (field === 'contrasena' && !item);
+      const isNumber = field.toLowerCase().includes('precio') || field.toLowerCase().includes('stock') || ['numero', 'capacidad'].includes(field);
 
       if (isSelect) {
         const options = field === 'categoriaId' ? relations.categorias : field === 'marcaId' ? relations.marcas : relations.proveedores;
@@ -217,9 +224,7 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
       if (field === 'estado') {
         return <label key={field}>Estado
           <select value={form[field]} onChange={(e) => update(field, e.target.value)} style={{border: '1px solid var(--line)', padding: '14px 15px', borderRadius: '4px', background: 'var(--paper)'}}>
-            <option value="activo">Activo</option>
-            <option value="inactivo">Inactivo</option>
-            <option value="bloqueado">Bloqueado</option>
+            {resource.label === 'Mesas' ? <><option value="LIBRE">Libre</option><option value="OCUPADA">Ocupada</option><option value="RESERVADA">Reservada</option></> : <><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="bloqueado">Bloqueado</option></>}
           </select>
         </label>
       }

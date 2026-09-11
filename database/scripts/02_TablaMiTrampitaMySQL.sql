@@ -111,24 +111,39 @@ CREATE TABLE `tipo_comprobante` (
   `descripcion` VARCHAR(255) NULL
 ) ENGINE=InnoDB;
 
+CREATE TABLE `mesa` (
+  `id_mesa` INT AUTO_INCREMENT PRIMARY KEY,
+  `numero_mesa` INT NOT NULL,
+  `capacidad` INT NOT NULL DEFAULT 4,
+  `estado_mesa` VARCHAR(20) NOT NULL DEFAULT 'LIBRE',
+  CONSTRAINT `uk_mesa_numero` UNIQUE (`numero_mesa`),
+  CONSTRAINT `ck_mesa_numero` CHECK (`numero_mesa` > 0),
+  CONSTRAINT `ck_mesa_capacidad` CHECK (`capacidad` > 0),
+  CONSTRAINT `ck_mesa_estado` CHECK (`estado_mesa` IN ('LIBRE', 'OCUPADA', 'RESERVADA'))
+) ENGINE=InnoDB;
+
 CREATE TABLE `venta` (
   `id_venta` INT AUTO_INCREMENT PRIMARY KEY,
   `id_empresa` INT NOT NULL,
   `id_usuario` INT NOT NULL,
   `id_cliente` INT NOT NULL,
   `id_tipo_comprobante` INT NOT NULL,
+  `id_mesa` INT NULL,
   `numero_comprobante` VARCHAR(50) NOT NULL,
   `subtotal` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `igv_impuesto` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `total` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `metodo_pago` ENUM('efectivo', 'tarjeta', 'transferencia', 'yape_plin') NOT NULL DEFAULT 'efectivo',
+  `estado_venta` VARCHAR(20) NOT NULL DEFAULT 'ABIERTA',
   `fecha_venta` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_venta_empresa` FOREIGN KEY (`id_empresa`) REFERENCES `empresa` (`id_empresa`) ON UPDATE CASCADE,
   CONSTRAINT `fk_venta_usuario` FOREIGN KEY (`id_usuario`) REFERENCES `usuario` (`id_usuario`) ON UPDATE CASCADE,
   CONSTRAINT `fk_venta_cliente` FOREIGN KEY (`id_cliente`) REFERENCES `cliente` (`id_cliente`) ON UPDATE CASCADE,
-  CONSTRAINT `fk_venta_tipo_comprobante` FOREIGN KEY (`id_tipo_comprobante`) REFERENCES `tipo_comprobante` (`id_tipo_comprobante`) ON UPDATE CASCADE
+  CONSTRAINT `fk_venta_tipo_comprobante` FOREIGN KEY (`id_tipo_comprobante`) REFERENCES `tipo_comprobante` (`id_tipo_comprobante`) ON UPDATE CASCADE,
+  CONSTRAINT `fk_venta_mesa` FOREIGN KEY (`id_mesa`) REFERENCES `mesa` (`id_mesa`) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 ALTER TABLE `venta` ADD CONSTRAINT `ck_venta_importes` CHECK (`subtotal` >= 0 AND `igv_impuesto` >= 0 AND `total` >= 0);
+ALTER TABLE `venta` ADD CONSTRAINT `ck_venta_estado` CHECK (`estado_venta` IN ('ABIERTA', 'CERRADA', 'ANULADA'));
 
 CREATE TABLE `detalle_venta` (
   `id_detalle_venta` INT AUTO_INCREMENT PRIMARY KEY,
@@ -144,6 +159,7 @@ CREATE UNIQUE INDEX `uk_cliente_numero_documento` ON `cliente` (`numero_document
 CREATE UNIQUE INDEX `uk_tipo_comprobante_serie` ON `tipo_comprobante` (`nombre_tipo`, `serie`);
 CREATE UNIQUE INDEX `uk_venta_comprobante` ON `venta` (`id_tipo_comprobante`, `numero_comprobante`);
 CREATE INDEX `idx_venta_fecha` ON `venta` (`fecha_venta`);
+CREATE INDEX `idx_venta_mesa_estado` ON `venta` (`id_mesa`, `estado_venta`);
 ALTER TABLE `detalle_venta` ADD CONSTRAINT `ck_detalle_cantidad` CHECK (`cantidad` > 0);
 ALTER TABLE `detalle_venta` ADD CONSTRAINT `ck_detalle_importes` CHECK (`precio_unitario` >= 0 AND `subtotal` >= 0);
 ALTER TABLE `detalle_venta` ADD CONSTRAINT `ck_detalle_subtotal` CHECK (`subtotal` = `cantidad` * `precio_unitario`);

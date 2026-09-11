@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 @Service
@@ -25,6 +26,7 @@ public class VentaService {
     private final UsuarioRepository usuarioRepository;
     private final ClienteRepository clienteRepository;
     private final TipoComprobanteRepository comprobanteRepository;
+    private final MesaRepository mesaRepository;
 
     @Transactional(readOnly = true)
     public List<Venta> listar() {
@@ -39,7 +41,7 @@ public class VentaService {
     @Transactional
     public Venta registrar(Integer empresaId, Integer usuarioId, Integer clienteId, ClienteData clienteData,
             Integer comprobanteId,
-            String numeroComprobante, MetodoPago metodoPago, List<ItemVenta> items) {
+            String numeroComprobante, MetodoPago metodoPago, Integer mesaId, List<ItemVenta> items) {
         if (items == null || items.isEmpty())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La venta requiere productos");
         if (numeroComprobante == null || numeroComprobante.isBlank())
@@ -60,6 +62,18 @@ public class VentaService {
         validarDatosCliente(venta.getTipoComprobante().getNombre(), cliente);
         venta.setNumeroComprobante(numeroComprobante.trim());
         venta.setMetodoPago(metodoPago == null ? MetodoPago.efectivo : metodoPago);
+        venta.setEstado(EstadoVenta.ABIERTA);
+        if (mesaId != null) {
+            Mesa mesa = mesaRepository.findByIdForUpdate(mesaId)
+                    .orElseThrow(() -> noEncontrado("Mesa"));
+            if (mesa.getEstado() != EstadoMesa.LIBRE
+                    || ventaRepository.existsByMesa_IdAndEstado(mesaId, EstadoVenta.ABIERTA)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "La mesa " + mesa.getNumero() + " ya está ocupada o reservada");
+            }
+            mesa.setEstado(EstadoMesa.OCUPADA);
+            venta.setMesa(mesa);
+        }
         BigDecimal subtotal = BigDecimal.ZERO;
         Map<Integer, Integer> quantities = new LinkedHashMap<>();
         for (ItemVenta item : items) {
@@ -89,6 +103,122 @@ public class VentaService {
         venta.setIgv(igv);
         venta.setTotal(subtotal.add(igv).setScale(2, RoundingMode.HALF_UP));
         return ventaRepository.save(venta);
+    }
+
+    /**
+     * Agrega unidades a una comanda abierta. La cantidad recibida es adicional,
+     * no el total final de la línea. Si el producto y su precio no cambiaron se
+     * reutiliza el detalle existente; así no se generan líneas duplicadas.
+     */
+    @Transactional
+    public Venta agregarItems(Integer ventaId, List<ItemVenta> items, MetodoPago metodoPago) {
+        if (items == null || items.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La comanda requiere productos");
+        }
+
+        Venta venta = ventaRepository.findByIdForUpdate(ventaId)
+                .orElseThrow(() -> noEncontrado("Venta"));
+        if (venta.getEstado() != EstadoVenta.ABIERTA) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La venta no está abierta y no admite nuevos productos");
+        }
+        if (metodoPago != null) {
+            venta.setMetodoPago(metodoPago);
+        }
+
+        Map<Integer, Integer> quantities = consolidarCantidades(items);
+        for (Map.Entry<Integer, Integer> entry : quantities.entrySet()) {
+            Integer productId = entry.getKey();
+            Integer quantity = entry.getValue();
+            Producto producto = productoRepository.findByIdForUpdate(productId)
+                    .orElseThrow(() -> noEncontrado("Producto"));
+            if (producto.getStockActual() < quantity) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Stock insuficiente para " + producto.getNombre());
+            }
+
+            BigDecimal unitPrice = producto.getPrecioVenta();
+            BigDecimal lineSubtotal = unitPrice.multiply(BigDecimal.valueOf(quantity))
+                    .setScale(2, RoundingMode.HALF_UP);
+            DetalleVenta existing = venta.getDetalles().stream()
+                    .filter(detail -> detail.getProducto() != null
+                            && Objects.equals(detail.getProducto().getId(), productId)
+                            && detail.getPrecioUnitario().compareTo(unitPrice) == 0)
+                    .findFirst()
+                    .orElse(null);
+
+            if (existing == null) {
+                venta.getDetalles().add(
+                        new DetalleVenta(null, venta, producto, quantity, unitPrice, lineSubtotal));
+            } else {
+                int newQuantity;
+                try {
+                    newQuantity = Math.addExact(existing.getCantidad(), quantity);
+                } catch (ArithmeticException exception) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "La cantidad acumulada es demasiado grande");
+                }
+                existing.setCantidad(newQuantity);
+                existing.setSubtotal(existing.getPrecioUnitario()
+                        .multiply(BigDecimal.valueOf(newQuantity)).setScale(2, RoundingMode.HALF_UP));
+            }
+            producto.setStockActual(producto.getStockActual() - quantity);
+        }
+
+        recalcularImportes(venta);
+        return ventaRepository.save(venta);
+    }
+
+    @Transactional
+    public Venta cerrar(Integer ventaId, MetodoPago metodoPago, BigDecimal montoRecibido) {
+        Venta venta = ventaRepository.findByIdForUpdate(ventaId)
+                .orElseThrow(() -> noEncontrado("Venta"));
+        if (venta.getEstado() != EstadoVenta.ABIERTA) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La venta ya está cerrada");
+        }
+        MetodoPago payment = metodoPago == null ? venta.getMetodoPago() : metodoPago;
+        if (payment == MetodoPago.efectivo
+                && (montoRecibido == null || montoRecibido.compareTo(venta.getTotal()) < 0)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El monto recibido no puede ser menor que el total");
+        }
+        venta.setMetodoPago(payment);
+        venta.setEstado(EstadoVenta.CERRADA);
+        if (venta.getMesa() != null) {
+            Mesa mesa = mesaRepository.findByIdForUpdate(venta.getMesa().getId())
+                    .orElseThrow(() -> noEncontrado("Mesa"));
+            mesa.setEstado(EstadoMesa.LIBRE);
+        }
+        return ventaRepository.save(venta);
+    }
+
+    private Map<Integer, Integer> consolidarCantidades(List<ItemVenta> items) {
+        Map<Integer, Integer> quantities = new LinkedHashMap<>();
+        for (ItemVenta item : items) {
+            if (item == null || item.productoId() == null || item.cantidad() == null || item.cantidad() < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Cada producto debe tener una cantidad mayor que cero");
+            }
+            try {
+                quantities.merge(item.productoId(), item.cantidad(), Math::addExact);
+            } catch (ArithmeticException exception) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "La cantidad acumulada es demasiado grande");
+            }
+        }
+        return quantities;
+    }
+
+    private void recalcularImportes(Venta venta) {
+        BigDecimal subtotal = venta.getDetalles().stream()
+                .map(DetalleVenta::getSubtotal)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        venta.setSubtotal(subtotal);
+        BigDecimal igv = subtotal.multiply(IGV).setScale(2, RoundingMode.HALF_UP);
+        venta.setIgv(igv);
+        venta.setTotal(subtotal.add(igv).setScale(2, RoundingMode.HALF_UP));
     }
 
     private ResponseStatusException noEncontrado(String recurso) {
