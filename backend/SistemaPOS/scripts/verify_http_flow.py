@@ -218,6 +218,37 @@ web = {**whatsapp, "numeroComprobante": f"WEB-{suffix}", "origenPedido": "WEB", 
 web_order = caja.call("POST", "/api/ventas", web, expected=201)
 assert web_order["origenPedido"] == "WEB" and web_order["estadoCuenta"] == "ABIERTA"
 assert stock(products[0]) == 0
+# Cancelación lógica: idempotente, con stock devuelto y permisos verificados.
+cancel_path = f"/api/ventas/items/{web_order['detalles'][0]['id']}/cancelar"
+cook.call("PATCH", cancel_path, {"motivo": "Cliente cancela"}, expected=403)
+caja.call("PATCH", cancel_path, {"motivo": " "}, expected=400)
+canceled = caja.call("PATCH", cancel_path, {"motivo": "Cliente cancela"})
+assert canceled["estado"] == "ANULADA" and float(canceled["total"]) == 0
+caja.call("PATCH", cancel_path, {"motivo": "Reintento"})
+assert stock(products[0]) == 1
+mozo.call("GET", "/api/pedidos-online", expected=403)
+mozo.call("GET", f"/api/ventas/{web_order['id']}", expected=403)
+# Comprobante seleccionado al cobrar; no modifica el cliente de la comanda.
+invoice_order = caja.call("POST", "/api/ventas", {**web, "numeroComprobante": f"FISCAL-{suffix}"}, expected=201)
+item_id = invoice_order["detalles"][0]["id"]
+cook.call("PATCH", f"/api/cocina/items/{item_id}/estado", {"estado": "PREPARANDO", "estadoActual": "PENDIENTE"})
+caja.call("PATCH", f"/api/ventas/items/{item_id}/cancelar", {"motivo": "Ya empezó cocina"}, expected=409)
+invoice_payment = payment(11.80, "EFECTIVO", 20)
+fiscal = {"tipoComprobante": "FACTURA", "factura": {"ruc": "20123456789", "razonSocial": "Empresa fiscal QA", "direccionFiscal": "Av. Prueba 123"}}
+invalid_fiscal = {**fiscal, "factura": {**fiscal["factura"], "razonSocial": " "}}
+invoice_path = f"/api/ventas/{invoice_order['id']}/cobrar"
+caja.call("POST", invoice_path, {"pago": invoice_payment, "facturacion": invalid_fiscal}, expected=400)
+assert not caja.call("GET", f"/api/ventas/{invoice_order['id']}")["pagos"]
+emitted = caja.call("POST", invoice_path, {"pago": invoice_payment, "facturacion": fiscal})
+assert emitted["comprobante"]["tipoComprobante"] == "FACTURA" and emitted["comprobante"]["ruc"] == "20123456789"
+assert emitted["comprobante"]["razonSocial"] == "Empresa fiscal QA"
+assert emitted["pagos"][0]["metodoPago"] == "EFECTIVO" and float(emitted["pagos"][0]["vuelto"]) == 8.20
+retried = caja.call("POST", invoice_path, {"pago": invoice_payment, "facturacion": fiscal})
+assert len(retried["pagos"]) == 1 and retried["comprobante"]["id"] == emitted["comprobante"]["id"]
+cook.call("PATCH", f"/api/cocina/items/{item_id}/estado", {"estado": "LISTO", "estadoActual": "PREPARANDO"})
+assert any(i["id"] == item_id and i["estadoPreparacion"] == "LISTO" for i in cook.call("GET", "/api/cocina/items"))
+caja.call("PATCH", f"/api/ventas/items/{item_id}/servir", {"estado": "SERVIDO", "estadoActual": "LISTO"})
+assert not any(i["id"] == item_id for i in cook.call("GET", "/api/cocina/items"))
 admin.call("POST", "/api/auth/logout", {}, expected=204)
 admin.call("GET", "/api/mesas", expected=401)
-print("PASS HTTP: sesión/CSRF, roles incluidos cocina, stock al pedir, rollback, abonos, reintentos, cierre, KDS, online flexible, WhatsApp/Web, boleta inmutable, cobro atómico, SSE y fidelización.")
+print("PASS HTTP: sesión/CSRF, roles, stock, rollback, abonos, reintentos, cierre, KDS, WhatsApp/Web, facturación, vuelto, cancelaciones, SSE y fidelización.")

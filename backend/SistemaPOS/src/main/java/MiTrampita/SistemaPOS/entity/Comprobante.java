@@ -20,6 +20,13 @@ public class Comprobante {
     @ManyToOne(optional = false) @JoinColumn(name = "id_tipo_comprobante", nullable = false, updatable = false)
     private TipoComprobante tipoComprobante;
     @Column(nullable = false, length = 50, updatable = false) private String tipo;
+    @Enumerated(EnumType.STRING)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.VARCHAR)
+    @Column(name = "tipo_comprobante", nullable = false, length = 20, updatable = false)
+    private TipoDocumento tipoDocumento;
+    @Column(length = 11, updatable = false) private String ruc;
+    @Column(name = "razon_social", length = 150, updatable = false) private String razonSocial;
+    @Column(length = 8, updatable = false) private String dni;
     @Column(nullable = false, length = 10, updatable = false) private String serie;
     @Column(nullable = false, updatable = false) private Long correlativo;
     @Column(name = "empresa_ruc", nullable = false, length = 20, updatable = false) private String empresaRuc;

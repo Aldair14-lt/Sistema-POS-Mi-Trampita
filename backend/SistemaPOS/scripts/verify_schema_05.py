@@ -47,6 +47,8 @@ consolidated = (scripts / f'pos_{args.engine}.sql').read_text(encoding='utf-8')
 marker = '-- 05. MIGRACIÓN DE BASE EXISTENTE / CUENTAS, ONLINE Y COCINA.'
 base, remaining = consolidated.split(marker, 1)
 migration, migration06 = remaining.split('-- 06. MIGRACIÓN DE BASE EXISTENTE / CAJA, WHATSAPP Y COMPROBANTES.', 1)
+migration06, migration07 = migration06.split('-- 07. FACTURACIÓN EN CAJA Y CANCELACIONES.', 1)
+migration07 = migration07.split('\n', 1)[1]
 if not pg:
     base = base.replace('`pos_db`', '`' + args.database + '`')
 run(base, args.database)
@@ -107,6 +109,24 @@ assert run("SELECT stock_actual FROM producto WHERE codigo_barras='QA-MIG';", ar
 if not pg:
     run('DROP PROCEDURE IF EXISTS migrar_pos_06;', args.database)
 
+# La migración fiscal preserva fotografías históricas y no repone stock ya descontado.
+run("""INSERT INTO comprobantes(id_venta,id_tipo_comprobante,tipo,serie,correlativo,
+ empresa_ruc,empresa_nombre,empresa_direccion,cliente_documento,cliente_nombre,
+ subtotal,igv,total,fecha_emision)
+ SELECT v.id_venta,v.id_tipo_comprobante,'BOLETA','B001',42,'20999999991','Prueba','Prueba',
+ '99999999','Cliente histórico',v.subtotal,v.igv_impuesto,v.total,CURRENT_TIMESTAMP
+ FROM ventas v WHERE v.numero_comprobante='B001-00000042';""", args.database)
+run(migration07, args.database)
+assert run("SELECT tipo_comprobante FROM comprobantes;", args.database) == 'BOLETA'
+assert run("SELECT dni FROM comprobantes;", args.database) == '99999999'
+assert run("SELECT metodo_pago FROM pagos_venta;", args.database) == 'EFECTIVO'
+assert run("SELECT stock_actual FROM producto WHERE codigo_barras='QA-MIG';", args.database) == '8'
+assert 'ya fue aplicada' in run(migration07, args.database, fail=True)
+run("UPDATE detalle_venta SET estado_preparacion='CANCELADO';", args.database, fail=True)
+assert run("SELECT COUNT(*) FROM detalle_venta WHERE estado_preparacion='CANCELADO';", args.database) == '0'
+if not pg:
+    run('DROP PROCEDURE IF EXISTS migrar_pos_07;', args.database)
+
 # La instalación completa también debe funcionar ejecutando un solo archivo.
 full_database = args.database + '_full'
 run(f'CREATE DATABASE {full_database}' + ('' if pg else ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci') + ';')
@@ -117,4 +137,5 @@ assert run("SELECT COUNT(*) FROM rol WHERE nombre_rol='COCINERO';", full_databas
 assert run('SELECT COUNT(*) FROM pagos_venta;', full_database) == '0'
 assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='06_caja_whatsapp_comprobantes';", full_database) == '1'
 assert run('SELECT COUNT(*) FROM comprobantes;', full_database) == '0'
-print(f'PASS {args.engine}: archivo único completo, preflight sin cambios, migraciones 05/06, históricos, correlativos y reejecución protegida. BD: {args.database}')
+assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='07_caja_fiscal_cancelaciones';", full_database) == '1'
+print(f'PASS {args.engine}: instalación completa, migraciones 05/06/07, históricos, pagos, auditoría de cancelaciones y reejecución protegida. BD: {args.database}')

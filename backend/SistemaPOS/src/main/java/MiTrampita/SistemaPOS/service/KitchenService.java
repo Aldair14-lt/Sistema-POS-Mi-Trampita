@@ -20,7 +20,7 @@ public class KitchenService {
 
     @Transactional(readOnly = true)
     public List<KitchenItemResponse> cola() {
-        return detalles.findColaCocina(List.of(EstadoPreparacion.PENDIENTE, EstadoPreparacion.PREPARANDO))
+        return detalles.findColaCocina(List.of(EstadoPreparacion.PENDIENTE, EstadoPreparacion.PREPARANDO, EstadoPreparacion.LISTO))
                 .stream().map(KitchenItemResponse::from).toList();
     }
 
@@ -44,7 +44,7 @@ public class KitchenService {
             case PENDIENTE -> siguiente == EstadoPreparacion.PREPARANDO;
             case PREPARANDO -> siguiente == EstadoPreparacion.LISTO;
             case LISTO -> siguiente == EstadoPreparacion.SERVIDO;
-            case SERVIDO -> false;
+            case SERVIDO, CANCELADO -> false;
         };
         if (!valido) throw conflict("Transición de cocina no permitida");
         detalle.setEstadoPreparacion(siguiente);

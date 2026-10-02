@@ -51,7 +51,7 @@ public class Venta {
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "metodo_pago", nullable = false, length = 20)
-    private MetodoPago metodoPago = MetodoPago.efectivo;
+    private MetodoPago metodoPago = MetodoPago.EFECTIVO;
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "estado_venta", nullable = false, length = 20)

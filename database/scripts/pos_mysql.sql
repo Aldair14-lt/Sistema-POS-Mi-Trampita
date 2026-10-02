@@ -1,11 +1,15 @@
 -- ============================================================================
--- POS MI TRAMPITA — INSTALACIÓN COMPLETA PARA MYSQL 8.0.16+
+-- POS MI TRAMPITA — SCRIPT ÚNICO PARA MYSQL 8.0.16+ (VERSIONES 01 A 07)
 --
 -- Base nueva: ejecutar el archivo completo; crea y selecciona pos_db.
 -- Base existente: respaldo previo, backend detenido y solo migraciones pendientes
--- (03, 04 y/o 05), nunca la sección de instalación.
--- Si ya tiene 04, seleccionar únicamente la sección 05 hasta el fin del archivo.
--- Si ya tiene 05, no repetir: se protege el inventario contra dobles descuentos.
+-- (03 a 07), nunca la sección de instalación.
+-- Si ya tiene 04: ejecutar las secciones 05, 06 y 07 de este mismo archivo.
+-- Si ya tiene 05: ejecutar las secciones 06 y 07 de este mismo archivo.
+-- Si ya tiene 06: ejecutar solo desde el encabezado 07 hasta el final.
+-- Si ya tiene 07: no ejecutar ninguna sección; la base ya está actualizada.
+-- Cada sección termina antes del siguiente encabezado numerado.
+-- No repetir migraciones: se protege el inventario contra dobles descuentos.
 -- MySQL confirma DDL implícitamente; restaurar el respaldo si falla a medias.
 -- ============================================================================
 CREATE DATABASE IF NOT EXISTS `pos_db` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -370,3 +374,61 @@ END$$
 DELIMITER ;
 CALL migrar_pos_06();
 DROP PROCEDURE migrar_pos_06;
+
+-- 07. FACTURACIÓN EN CAJA Y CANCELACIONES. Requiere 06; backend detenido.
+-- MySQL confirma DDL implícitamente. Respaldar antes; restaurar si una fase falla.
+DROP PROCEDURE IF EXISTS migrar_pos_07;
+DELIMITER $$
+CREATE PROCEDURE migrar_pos_07()
+BEGIN
+  IF EXISTS(SELECT 1 FROM pos_migraciones WHERE version='07_caja_fiscal_cancelaciones') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='La migración 07 ya fue aplicada';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='06_caja_whatsapp_comprobantes') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Primero aplica la migración 06';
+  END IF;
+  IF EXISTS(SELECT 1 FROM comprobantes WHERE UPPER(REPLACE(tipo,' ','_')) NOT IN ('NOTA_DE_VENTA','NOTA_VENTA','BOLETA','FACTURA')) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Revisar tipos históricos de comprobantes antes de migrar';
+  END IF;
+  IF EXISTS(SELECT 1 FROM comprobantes WHERE UPPER(tipo)='FACTURA' AND
+      (NOT REGEXP_LIKE(cliente_documento,'^[0-9]{11}$') OR LENGTH(TRIM(cliente_nombre))=0)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Revisar datos fiscales de facturas históricas';
+  END IF;
+  ALTER TABLE comprobantes
+    ADD COLUMN tipo_comprobante VARCHAR(20),
+    ADD COLUMN ruc VARCHAR(11),
+    ADD COLUMN razon_social VARCHAR(150),
+    ADD COLUMN dni VARCHAR(8);
+  UPDATE comprobantes SET
+    tipo_comprobante=CASE WHEN UPPER(REPLACE(tipo,' ','_')) IN ('NOTA_DE_VENTA','NOTA_VENTA') THEN 'NOTA_VENTA' ELSE UPPER(tipo) END,
+    ruc=CASE WHEN UPPER(tipo)='FACTURA' THEN cliente_documento END,
+    razon_social=CASE WHEN UPPER(tipo)='FACTURA' THEN cliente_nombre END,
+    dni=CASE WHEN UPPER(tipo)='BOLETA' AND REGEXP_LIKE(cliente_documento,'^[0-9]{8}$') THEN cliente_documento END;
+  ALTER TABLE comprobantes
+    MODIFY tipo_comprobante VARCHAR(20) NOT NULL,
+    ADD CONSTRAINT ck_comprobante_tipo CHECK(tipo_comprobante IN ('NOTA_VENTA','BOLETA','FACTURA')),
+    ADD CONSTRAINT ck_comprobante_fiscal CHECK(
+      (tipo_comprobante='FACTURA' AND ruc IS NOT NULL AND REGEXP_LIKE(ruc,'^[0-9]{11}$')
+        AND razon_social IS NOT NULL AND LENGTH(TRIM(razon_social))>0 AND dni IS NULL)
+      OR (tipo_comprobante<>'FACTURA' AND ruc IS NULL AND razon_social IS NULL)),
+    ADD CONSTRAINT ck_comprobante_dni CHECK(dni IS NULL OR (tipo_comprobante='BOLETA' AND REGEXP_LIKE(dni,'^[0-9]{8}$')));
+  ALTER TABLE ventas DROP CHECK ck_venta_metodo_pago;
+  ALTER TABLE pagos_venta DROP CHECK ck_pago_metodo;
+  UPDATE ventas SET metodo_pago=UPPER(metodo_pago);
+  UPDATE pagos_venta SET metodo_pago=UPPER(metodo_pago);
+  ALTER TABLE ventas ALTER COLUMN metodo_pago SET DEFAULT 'EFECTIVO';
+  ALTER TABLE ventas ADD CONSTRAINT ck_venta_metodo_pago CHECK(metodo_pago IN ('EFECTIVO','YAPE','PLIN','TARJETA','TRANSFERENCIA','YAPE_PLIN'));
+  ALTER TABLE pagos_venta ADD CONSTRAINT ck_pago_metodo CHECK(metodo_pago IN ('EFECTIVO','YAPE','PLIN','TARJETA','TRANSFERENCIA','YAPE_PLIN'));
+  ALTER TABLE detalle_venta DROP CHECK ck_detalle_preparacion;
+  ALTER TABLE detalle_venta
+    ADD COLUMN motivo_cancelacion VARCHAR(255),
+    ADD COLUMN cancelado_por INT,
+    ADD CONSTRAINT fk_detalle_cancelado_por FOREIGN KEY(cancelado_por) REFERENCES usuario(id_usuario),
+    ADD CONSTRAINT ck_detalle_preparacion CHECK(estado_preparacion IN ('PENDIENTE','PREPARANDO','LISTO','SERVIDO','CANCELADO')),
+    ADD CONSTRAINT ck_detalle_cancelacion CHECK(estado_preparacion<>'CANCELADO' OR
+      (motivo_cancelacion IS NOT NULL AND LENGTH(TRIM(motivo_cancelacion))>0 AND cancelado_por IS NOT NULL));
+  INSERT INTO pos_migraciones(version) VALUES('07_caja_fiscal_cancelaciones');
+END$$
+DELIMITER ;
+CALL migrar_pos_07();
+DROP PROCEDURE migrar_pos_07;

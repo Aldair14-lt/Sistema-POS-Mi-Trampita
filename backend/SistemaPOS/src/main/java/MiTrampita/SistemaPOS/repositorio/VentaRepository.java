@@ -25,7 +25,8 @@ public interface VentaRepository extends JpaRepository<Venta, Integer> {
           and v.estado <> MiTrampita.SistemaPOS.entity.EstadoVenta.ANULADA
           and (v.estado = MiTrampita.SistemaPOS.entity.EstadoVenta.ABIERTA
             or exists (select d.id from DetalleVenta d where d.venta = v
-              and d.estadoPreparacion <> MiTrampita.SistemaPOS.entity.EstadoPreparacion.SERVIDO))
+              and d.estadoPreparacion not in (MiTrampita.SistemaPOS.entity.EstadoPreparacion.SERVIDO,
+                MiTrampita.SistemaPOS.entity.EstadoPreparacion.CANCELADO)))
         order by v.fechaVenta asc, v.id asc
         """)
     List<Venta> findOnlineActivos();

@@ -74,7 +74,7 @@ export default function WhatsAppOrderForm({ onCreated, onCancel }) {
     {!catalog ? <p className="loading">Cargando catálogo…</p> : <form onSubmit={submit}>
       <fieldset disabled={busy || uncertain}><legend>Cliente y entrega</legend>
       <div className="inline-fields"><label>Canal<select value={origin} onChange={event => setOrigin(event.target.value)}><option value="WHATSAPP">WhatsApp / Redes</option><option value="WEB">Web</option></select></label>
-        <label>Cliente<select value={clientId} onChange={event => {
+        <label>Cliente<select aria-label="Cliente del pedido" value={clientId} onChange={event => {
           const id = event.target.value; setClientId(id)
           const selected = catalog.clients.find(client => String(client.id) === id)
           setCustomer(selected ? { numeroDocumento: selected.numeroDocumento, nombresRazonSocial: selected.nombresRazonSocial, telefono: selected.telefono || '', direccion: selected.direccion || '' } : { numeroDocumento: '', nombresRazonSocial: '', telefono: '', direccion: '' })
@@ -87,12 +87,12 @@ export default function WhatsAppOrderForm({ onCreated, onCancel }) {
         <label>Comprobante<select required value={receipt} onChange={e => setReceipt(e.target.value)}>{catalog.receipts.map(r => <option key={r.id} value={r.id}>{r.nombre} · {r.serie}</option>)}</select></label></div>
       {delivery === 'DELIVERY' && <label>Dirección de envío<input required maxLength={255} value={address} onChange={e => setAddress(e.target.value)} /></label>}
       <legend>Productos</legend>{items.map((item, index) => <div className="online-item-input" key={index}>
-        <label>Producto<select required value={item.productoId} onChange={e => updateItem(index, 'productoId', e.target.value)}><option value="">Selecciona</option>
+        <label>Producto<select aria-label="Producto" required value={item.productoId} onChange={e => updateItem(index, 'productoId', e.target.value)}><option value="">Selecciona</option>
           {catalog.products.map(p => <option key={p.id} value={p.id} disabled={p.stockActual <= 0}>{p.nombre} · S/ {money(p.precioVenta)} · stock {p.stockActual}</option>)}</select></label>
         <label>Cantidad<input type="number" min="1" max="100000" required step="1" value={item.cantidad} onChange={e => updateItem(index, 'cantidad', e.target.value)} /></label>
         <button type="button" className="secondary-button" disabled={items.length === 1} onClick={() => setItems(items.filter((_, i) => i !== index))}>Quitar</button></div>)}
       <button type="button" className="secondary-button" disabled={items.length >= 200} onClick={() => setItems([...items, { productoId: '', cantidad: 1 }])}>Agregar producto</button>
-      <legend>Pago inicial confirmado</legend><div className="inline-fields"><label>Modalidad<select value={mode} onChange={e => setMode(e.target.value)}><option value="CONTRA_ENTREGA">Presencial / contra entrega</option><option value="ADELANTO">Adelanto</option><option value="TOTAL">Pago 100%</option></select></label>
+      <legend>Pago inicial confirmado</legend><div className="inline-fields"><label>Modalidad<select aria-label="Modalidad" value={mode} onChange={e => setMode(e.target.value)}><option value="CONTRA_ENTREGA">Presencial / contra entrega</option><option value="ADELANTO">Adelanto</option><option value="TOTAL">Pago 100%</option></select></label>
         {mode === 'ADELANTO' && <label>Adelanto (S/)<input required type="number" step="0.01" min="0.01" max={total} value={advance} onChange={e => setAdvance(e.target.value)} /></label>}</div>
       {mode !== 'CONTRA_ENTREGA' && <div className="inline-fields"><label>Método<select value={method} onChange={e => setMethod(e.target.value)}><option value="efectivo">Efectivo recibido exacto</option><option value="tarjeta">Tarjeta</option><option value="transferencia">Transferencia</option><option value="yape">Yape</option><option value="plin">Plin</option></select></label>
         <label>Referencia<input maxLength={100} value={reference} onChange={e => setReference(e.target.value)} /></label></div>}

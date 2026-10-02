@@ -5,7 +5,8 @@ import { api } from '../api'
 import usePolling from '../hooks/usePolling'
 import useOrderAlerts from '../hooks/useOrderAlerts'
 import WhatsAppOrderForm from '../components/WhatsAppOrderForm'
-import UniversalPaymentModal from '../components/UniversalPaymentModal'
+import PaymentModal from '../components/cashier/PaymentModal'
+import CancelItemButton from '../components/CancelItemButton'
 import OrderStatus, { money, PaymentBadge } from '../components/OrderStatus'
 import Receipt from '../Receipt'
 import '../styles/cashier.css'
@@ -34,7 +35,7 @@ export default function CashierDashboard() {
   const renderCard = sale => <article className="cashier-card" key={sale.id}>
     <header><div><span className="eyebrow">CUENTA #{sale.id} · {new Date(sale.fechaVenta).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span><h3>{sale.mesa ? `Mesa ${String(sale.mesa.numero).padStart(2, '0')}` : `${sale.origenPedido} · ${sale.tipoEntrega === 'DELIVERY' ? 'Delivery' : 'Recojo'}`}</h3><p>{sale.mesa?.area?.nombre || sale.cliente.nombresRazonSocial}</p></div><PaymentBadge sale={sale} /></header>
     {!sale.mesa && <div className="cashier-delivery">{(sale.telefonoEntrega || sale.cliente.telefono) && <span>{sale.telefonoEntrega || sale.cliente.telefono}</span>}{sale.direccionEnvio && <span>{sale.direccionEnvio}</span>}</div>}
-    <ul className="cashier-items">{sale.detalles.map(item => <li key={item.id}><div><strong>{item.cantidad} × {item.producto.nombre}</strong><OrderStatus state={item.estadoPreparacion} /></div>{item.estadoPreparacion === 'LISTO' && <button className="secondary-button" disabled={busy !== null} onClick={() => serve(item)}>Despachado</button>}</li>)}</ul>
+    <ul className="cashier-items">{sale.detalles.map(item => <li key={item.id}><div><strong>{item.cantidad} × {item.producto.nombre}</strong><OrderStatus state={item.estadoPreparacion} />{item.motivoCancelacion && <small>{item.motivoCancelacion}</small>}</div>{item.estadoPreparacion === 'LISTO' && <button className="secondary-button" disabled={busy !== null} onClick={() => serve(item)}>Despachado</button>}{sale.estado === 'ABIERTA' && <CancelItemButton item={item} onUpdated={refresh} />}</li>)}</ul>
     <div className="cashier-card-total"><span>Total <b>S/ {money(sale.total)}</b></span><span>Saldo <strong>S/ {money(sale.saldoPendiente)}</strong></span></div>
     <button className="primary-button full" onClick={() => setPaymentId(sale.id)}><BadgeDollarSign size={17} />{sale.estado === 'CERRADA' ? 'Ver pagos y comprobante' : Number(sale.saldoPendiente) === 0 ? 'Emitir comprobante' : 'Cobrar / registrar abono'}</button>
     {sale.comprobante && <button className="secondary-button full" onClick={() => print(sale)}><Printer size={15} />Imprimir {sale.comprobante.numero}</button>}
@@ -54,6 +55,6 @@ export default function CashierDashboard() {
       {data.comprobantesRecientes.length > 0 && <section className="cashier-receipts"><h2>Comprobantes recientes</h2>{data.comprobantesRecientes.map(sale => <div key={sale.id}><span><strong>{sale.comprobante?.numero || sale.numeroComprobante}</strong><small>{sale.cliente.nombresRazonSocial}</small></span><b>S/ {money(sale.total)}</b><button className="secondary-button" onClick={() => print(sale)} aria-label={`Imprimir comprobante de la venta ${sale.id}`}><Printer size={16} /></button></div>)}</section>}
     </>}
     <Receipt sale={printDocument} />
-    {paymentId && <UniversalPaymentModal key={paymentId} saleId={paymentId} onClose={() => setPaymentId(null)} onUpdated={sale => { if (sale.comprobante) setLastReceipt(sale); refresh() }} />}
+    {paymentId && <PaymentModal key={paymentId} saleId={paymentId} onClose={() => setPaymentId(null)} onUpdated={sale => { if (sale.comprobante) setLastReceipt(sale); refresh() }} />}
   </>
 }

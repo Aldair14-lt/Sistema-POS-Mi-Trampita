@@ -296,6 +296,53 @@
   margin-top: 6px;
 }
 
+.payment-backdrop { z-index: 100; }
+.advanced-payment { width: min(620px, 100%); padding: 28px; box-shadow: 0 24px 100px #122e2e30; }
+.advanced-payment .modal-header { padding: 0 0 20px; }
+.advanced-payment .payment-summary { background: #f4f7f3; border: 1px solid #e1e8e0; border-radius: 14px; padding: 18px; }
+.advanced-payment .payment-summary > div:last-child strong { color: #246b49; }
+.payment-steps { display: flex; gap: 24px; padding: 0; margin: 24px 0; list-style: none; }
+.payment-steps li { display: flex; align-items: center; gap: 9px; font-size: 12px; color: #7d8983; }
+.payment-steps b { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #edf1ed; }
+.payment-steps [aria-current=step] { color: #245b3e; font-weight: 700; }
+.payment-steps [aria-current=step] b { color: white; background: #2c714d; }
+.payment-methods { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin: 18px 0; }
+.payment-methods button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 9px; border: 1px solid #dfe6df; background: #fff; color: #68766d; border-radius: 13px; padding: 18px 8px; font-size: 12px; min-height: 84px; }
+.payment-methods button[aria-pressed=true] { border-color: #70a780; background: #edf8ee; color: #27633e; box-shadow: 0 0 0 1px #70a780; }
+.payment-methods .method-yape[aria-pressed=true] { color: #702b89; border-color: #b886c8; background: #f8effb; box-shadow: 0 0 0 1px #b886c8; }
+.payment-methods .method-plin[aria-pressed=true] { color: #047987; border-color: #68b8c2; background: #edfbfc; box-shadow: 0 0 0 1px #68b8c2; }
+.method-check { position: absolute; top: 7px; right: 7px; }
+.cash-received { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; padding: 17px; border-radius: 12px; background: #f3f7f1; margin-bottom: 17px; align-items: center; }
+.cash-received input { background: white; }
+.receipt-selector { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+.receipt-selector button { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 16px 8px; min-height: 52px; background: white; border: 1px solid #dbe4de; border-radius: 10px; color: #67766c; font-size: 12px; }
+.receipt-selector button[aria-pressed=true] { background: #eaf5ed; color: #27633e; border-color: #70a780; }
+.fiscal-fields { display: grid; gap: 14px; }
+.payment-hint { color: #65776b; font-size: 12px; line-height: 1.7; margin: 14px 0; }
+.payment-confirmation { display: grid; gap: 13px; border-block: 1px dashed #c9d9cc; padding: 18px 0; margin: 20px 0; }
+.payment-confirmation span { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #687a6e; }
+.payment-confirmation strong { color: #2b6141; font-size: 21px; }
+.payment-confirmation small { color: #738177; font-size: 11px; }
+.payment-actions { display: flex; gap: 10px; margin: 20px 0; }
+.payment-actions .primary-button { flex: 1; min-height: 48px; }
+.payment-methods button:focus-visible, .receipt-selector button:focus-visible { outline: 3px solid #27633e; outline-offset: 3px; }
+.cancel-item { flex-basis: 100%; }
+.cancel-item-trigger { border: 0; background: transparent; color: #a44e34; font-size: 11px; padding: 8px 0; }
+.cancel-item-form { width: 100%; padding: 12px; border-radius: 10px; background: #fff6ef; }
+.cancel-item-form > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.cashier-items li, .sale-item-status { flex-wrap: wrap; }
+.preparation-cancelado { background: #edece9; color: #726e65; }
+.cashier-items small { display: block; color: #777; font-size: 11px; }
+@media(max-width: 540px) {
+  .advanced-payment { padding: 18px; }
+  .receipt-selector button { flex-direction: column; }
+  .payment-steps { gap: 15px; }
+  .cash-received { gap: 12px; padding: 12px; }
+  .payment-actions { flex-wrap: wrap; }
+  .advanced-payment .payment-summary { padding: 10px; gap: 5px; }
+  .advanced-payment .payment-summary strong { white-space: nowrap; font-size: 16px; }
+}
+
 .preparation-preparando {
   background: #e7effb;
   color: #365d99;

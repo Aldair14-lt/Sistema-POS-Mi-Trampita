@@ -42,4 +42,8 @@ public class DetalleVenta {
     private OffsetDateTime fechaPedido = OffsetDateTime.now();
     @Column(name = "fecha_estado", nullable = false)
     private OffsetDateTime fechaEstado = OffsetDateTime.now();
+    @Column(name = "motivo_cancelacion", length = 255)
+    private String motivoCancelacion;
+    @ManyToOne @JoinColumn(name = "cancelado_por") @JsonIgnore
+    private Usuario canceladoPor;
 }

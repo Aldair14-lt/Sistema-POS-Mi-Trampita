@@ -300,6 +300,10 @@
   color: #ffd5cc;
 }
 
+.kds-kanban { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.kds-column.listo { border-top: 3px solid #a9dab5; }
+.kds-column.listo .kds-column-title { color: #a9dab5; }
+@media(min-width: 1001px) and (max-width: 1450px) { .kds-ticket li { flex-wrap: wrap; } .kds-ticket li button { margin-left: auto; } }
 @media(max-width:1000px) {
   .kds-screen {
     padding: 20px;

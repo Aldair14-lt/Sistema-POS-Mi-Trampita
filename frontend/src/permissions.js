@@ -3,7 +3,7 @@ export function permissions(session) {
   const isAdmin = roles.has('ADMIN')
   const canOrder = isAdmin || roles.has('MOZO')
   const canCharge = isAdmin || roles.has('CAJA')
-  return { isAdmin, canOrder, canCharge, canKitchen: isAdmin || roles.has('COCINERO'), canOnline: canOrder || canCharge }
+  return { isAdmin, canOrder, canCharge, canKitchen: isAdmin || roles.has('COCINERO'), canOnline: canCharge }
 }
 export function defaultView(session) {
   const rights = permissions(session)

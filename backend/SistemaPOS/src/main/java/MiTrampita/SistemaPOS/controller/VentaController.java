@@ -21,13 +21,20 @@ public class VentaController {
     private final VentaService service;
     private final MiTrampita.SistemaPOS.service.KitchenService cocina;
     @GetMapping public List<VentaResponse> listar() { return service.listar(false).stream().map(VentaResponse::from).toList(); }
-    @GetMapping("/abiertas") public List<VentaResponse> abiertas() { return service.listar(true).stream().map(VentaResponse::from).toList(); }
+    @GetMapping("/abiertas") public List<VentaResponse> abiertas(@AuthenticationPrincipal PosPrincipal principal) {
+        return service.listar(true).stream().filter(v -> puedeVer(principal, v)).map(VentaResponse::from).toList();
+    }
     @GetMapping("/{id}")
     public VentaResponse obtener(@PathVariable Integer id, @AuthenticationPrincipal PosPrincipal principal) {
         Venta venta = service.obtener(id);
-        if (venta.getEstado() != EstadoVenta.ABIERTA && !principal.roles().contains("ADMIN") && !principal.roles().contains("CAJA"))
+        if (!puedeVer(principal, venta))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo administración y caja pueden consultar comprobantes");
         return VentaResponse.from(venta);
+    }
+
+    private boolean puedeVer(PosPrincipal principal, Venta venta) {
+        return principal.roles().contains("ADMIN") || principal.roles().contains("CAJA")
+            || (venta.getEstado() == EstadoVenta.ABIERTA && venta.getOrigenPedido() == OrigenPedido.LOCAL);
     }
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
     public VentaResponse registrar(@Valid @RequestBody VentaRequest request, @AuthenticationPrincipal PosPrincipal principal) {
@@ -66,8 +73,21 @@ public class VentaController {
         return VentaResponse.from(service.obtener(id)).pagos();
     }
     @PatchMapping("/items/{id}/servir")
-    public KitchenItemResponse servir(@PathVariable Integer id, @Valid @RequestBody UpdateItemStatusRequest request) {
+    public KitchenItemResponse servir(@PathVariable Integer id, @Valid @RequestBody UpdateItemStatusRequest request,
+            @AuthenticationPrincipal PosPrincipal principal) {
+        validarItemLocal(id, principal);
         return cocina.actualizar(id, request, true);
+    }
+
+    @PatchMapping("/items/{id}/cancelar")
+    public VentaResponse cancelar(@PathVariable Integer id, @Valid @RequestBody CancelarItemRequest request,
+            @AuthenticationPrincipal PosPrincipal principal) {
+        validarItemLocal(id, principal);
+        return VentaResponse.from(service.cancelarItem(id, request, principal.id()));
+    }
+
+    private void validarItemLocal(Integer id, PosPrincipal principal) {
+        if (!principal.roles().contains("ADMIN") && !principal.roles().contains("CAJA")) service.validarItemLocal(id);
     }
 
 }

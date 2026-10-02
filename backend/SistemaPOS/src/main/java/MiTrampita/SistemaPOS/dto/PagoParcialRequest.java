@@ -12,7 +12,7 @@ public record PagoParcialRequest(
         @NotBlank @Pattern(regexp = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}") String claveOperacion) {
     @AssertTrue(message = "En efectivo el monto recibido debe cubrir el abono")
     public boolean isEfectivoValido() {
-        return metodoPago != MetodoPago.efectivo || (monto != null && montoRecibido != null && montoRecibido.compareTo(monto) >= 0);
+        return metodoPago != MetodoPago.EFECTIVO || (monto != null && montoRecibido != null && montoRecibido.compareTo(monto) >= 0);
     }
     public RegistrarPagoRequest toPago() { return new RegistrarPagoRequest(monto, metodoPago, montoRecibido, referencia, claveOperacion); }
 }

@@ -12,7 +12,7 @@ public record RegistrarPagoRequest(
         @NotBlank @Pattern(regexp = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}") String claveOperacion) {
     @AssertTrue(message = "En efectivo el monto recibido debe cubrir el abono")
     public boolean isEfectivoValido() {
-        return metodoPago != MetodoPago.efectivo ||
+        return metodoPago != MetodoPago.EFECTIVO ||
                 (monto != null && montoRecibido != null && montoRecibido.compareTo(monto) >= 0);
     }
 }

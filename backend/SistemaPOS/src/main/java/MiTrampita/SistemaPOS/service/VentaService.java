@@ -29,7 +29,8 @@ public class VentaService {
     private final MesaRepository mesas;
     private final MesaService mesaService;
     private final PagoVentaRepository pagos;
-    private final ComprobanteRepository documentos;
+    private final ComprobanteService comprobanteService;
+    private final DetalleVentaRepository detalles;
     private final OperationEvents events;
 
     @Transactional(readOnly = true)
@@ -43,6 +44,14 @@ public class VentaService {
         Venta venta = ventas.findById(id).orElseThrow(() -> missing("Venta"));
         cargarCuenta(venta);
         return venta;
+    }
+
+    @Transactional(readOnly = true)
+    public void validarItemLocal(Integer id) {
+        Integer ventaId = detalles.findVentaId(id).orElseThrow(() -> missing("Ítem"));
+        Venta venta = ventas.findById(ventaId).orElseThrow(() -> missing("Venta"));
+        if (venta.getOrigenPedido() != OrigenPedido.LOCAL)
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Mozo solo opera pedidos de mesas");
     }
 
     @Transactional(readOnly = true)
@@ -151,16 +160,22 @@ public class VentaService {
             detalle.setSubtotal(precio.multiply(BigDecimal.valueOf(entry.getValue())));
             venta.getDetalles().add(detalle);
         }
-        BigDecimal subtotal = venta.getDetalles().stream().map(DetalleVenta::getSubtotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        recalcularTotales(venta);
+        venta.setCuentaSolicitada(false);
+        venta.setFechaSolicitudCuenta(null);
+        events.changed(true);
+    }
+
+    private void recalcularTotales(Venta venta) {
+        BigDecimal subtotal = venta.getDetalles().stream()
+            .filter(d -> d.getEstadoPreparacion() != EstadoPreparacion.CANCELADO)
+            .map(DetalleVenta::getSubtotal).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal igv = subtotal.multiply(IGV).setScale(2, RoundingMode.HALF_UP);
         if (subtotal.add(igv).compareTo(MAX_IMPORTE) > 0) throw bad("El importe supera el límite de una venta");
         venta.setSubtotal(subtotal.setScale(2, RoundingMode.HALF_UP));
         venta.setIgv(igv);
         venta.setTotal(subtotal.add(igv).setScale(2, RoundingMode.HALF_UP));
         recalcularCuenta(venta);
-        venta.setCuentaSolicitada(false);
-        venta.setFechaSolicitudCuenta(null);
-        events.changed(true);
     }
 
     @Transactional
@@ -183,7 +198,7 @@ public class VentaService {
         if (totalPagado(venta).compareTo(venta.getTotal()) != 0)
             throw conflict("Los pagos deben cubrir exactamente el total antes de cerrar");
         validarEntrega(venta);
-        finalizar(venta);
+        finalizar(venta, null);
         cargarCuenta(venta);
         return venta;
     }
@@ -195,13 +210,16 @@ public class VentaService {
         if (request.pago() != null) registrarAbono(venta, request.pago().toPago(), usuarioId);
         if (venta.getEstado() == EstadoVenta.CERRADA) {
             if (venta.getComprobante() == null) throw conflict("La venta histórica ya está cerrada");
+            comprobanteService.validarReintento(venta.getComprobante(), request.facturacion());
             cargarCuenta(venta);
             return venta; // Reintento confirmado: ni otro pago ni otro correlativo.
         }
         validarAbierta(venta);
         if (totalPagado(venta).compareTo(venta.getTotal()) == 0) {
             if (venta.getMesa() != null) validarEntrega(venta);
-            finalizar(venta);
+            finalizar(venta, request.facturacion());
+        } else if (request.facturacion() != null) {
+            throw conflict("Completa el saldo antes de emitir un comprobante");
         } else if (request.pago() == null) throw conflict("Todavía existe saldo pendiente");
         cargarCuenta(venta);
         return venta;
@@ -209,11 +227,12 @@ public class VentaService {
 
     private void validarEntrega(Venta venta) {
         if (venta.getDetalles().isEmpty()) throw bad("La comanda no tiene productos");
-        if (venta.getDetalles().stream().anyMatch(d -> d.getEstadoPreparacion() != EstadoPreparacion.SERVIDO))
+        if (venta.getDetalles().stream().anyMatch(d -> d.getEstadoPreparacion() != EstadoPreparacion.SERVIDO
+                && d.getEstadoPreparacion() != EstadoPreparacion.CANCELADO))
             throw conflict("Entrega todos los productos antes de finalizar la mesa");
     }
 
-    private void finalizar(Venta venta) {
+    private void finalizar(Venta venta, FacturacionRequest fiscal) {
         recalcularCuenta(venta);
         if (totalPagado(venta).compareTo(venta.getTotal()) != 0)
             throw conflict("Los pagos deben cubrir exactamente el total antes de cerrar");
@@ -222,37 +241,49 @@ public class VentaService {
         Cliente cliente = clientes.findByIdForUpdate(venta.getCliente().getId()).orElseThrow(() -> missing("Cliente"));
         entityManager.refresh(cliente, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         venta.setCliente(cliente);
-        validarCliente(venta); // Revalidar la ficha fiscal vigente antes de emitir.
         cliente.setFrecuenciaVisitas(Math.addExact(cliente.getFrecuenciaVisitas(), 1L));
         cliente.setTotalGastado(cliente.getTotalGastado().add(venta.getTotal()));
         venta.setEstado(EstadoVenta.CERRADA);
         venta.setFechaCobro(OffsetDateTime.now());
-        emitirComprobante(venta);
+        comprobanteService.emitir(venta, fiscal);
         if (mesa != null) mesa.setEstado(EstadoMesa.LIBRE);
         events.changed(false);
     }
 
-    private void emitirComprobante(Venta venta) {
-        if (venta.getComprobante() != null) return;
-        TipoComprobante tipo = comprobantes.findByIdForUpdate(venta.getTipoComprobante().getId()).orElseThrow(() -> missing("Comprobante"));
-        entityManager.refresh(tipo, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        long numero = Math.addExact(tipo.getUltimoCorrelativo(), 1L);
-        tipo.setUltimoCorrelativo(numero);
-        var c = new Comprobante();
-        c.setVenta(venta); c.setTipoComprobante(tipo); c.setTipo(tipo.getNombre());
-        c.setSerie(tipo.getSerie()); c.setCorrelativo(numero);
-        c.setEmpresaRuc(venta.getEmpresa().getRuc()); c.setEmpresaNombre(venta.getEmpresa().getRazonSocial());
-        c.setEmpresaDireccion(venta.getEmpresa().getDireccion());
-        c.setClienteDocumento(venta.getCliente().getNumeroDocumento()); c.setClienteNombre(venta.getCliente().getNombresRazonSocial());
-        c.setClienteDireccion(venta.getCliente().getDireccion()); c.setFechaEmision(venta.getFechaCobro());
-        c.setSubtotal(venta.getSubtotal()); c.setIgv(venta.getIgv()); c.setTotal(venta.getTotal());
-        venta.getDetalles().forEach(item -> {
-            var d = new DetalleComprobante();
-            d.setComprobante(c); d.setProducto(item.getProducto().getNombre()); d.setCantidad(item.getCantidad());
-            d.setPrecioUnitario(item.getPrecioUnitario()); d.setSubtotal(item.getSubtotal()); c.getDetalles().add(d);
-        });
-        documentos.saveAndFlush(c);
-        venta.setComprobante(c);
+    /** Cancelar y preparar compiten por el mismo bloqueo de venta: solo uno puede ganar. */
+    @Transactional
+    public Venta cancelarItem(Integer id, CancelarItemRequest request, Integer usuarioId) {
+        Integer ventaId = detalles.findVentaId(id).orElseThrow(() -> missing("Ítem"));
+        Venta venta = ventas.findByIdForUpdate(ventaId).orElseThrow(() -> missing("Venta"));
+        DetalleVenta detalle = detalles.findById(id).orElseThrow(() -> missing("Ítem"));
+        if (detalle.getEstadoPreparacion() == EstadoPreparacion.CANCELADO) {
+            cargarCuenta(venta); return venta; // Reintento: jamás reponer stock dos veces.
+        }
+        validarAbierta(venta);
+        if (detalle.getEstadoPreparacion() != EstadoPreparacion.PENDIENTE)
+            throw conflict("Solo se puede cancelar un plato antes de prepararlo");
+        if (request.motivo() == null || request.motivo().isBlank() || request.motivo().length() > 255)
+            throw bad("Indica el motivo de cancelación (máximo 255 caracteres)");
+        Mesa mesa = venta.getMesa() == null ? null : mesas.findByIdForUpdate(venta.getMesa().getId()).orElseThrow();
+        detalle.setEstadoPreparacion(EstadoPreparacion.CANCELADO);
+        detalle.setMotivoCancelacion(request.motivo().trim());
+        detalle.setCanceladoPor(usuarios.findById(usuarioId).orElseThrow(() -> missing("Usuario")));
+        detalle.setFechaEstado(OffsetDateTime.now());
+        recalcularTotales(venta);
+        if (totalPagado(venta).compareTo(venta.getTotal()) > 0)
+            throw conflict("La cancelación dejaría pagos por encima del total; requiere devolución por Caja");
+        Producto producto = detalle.getProducto();
+        entityManager.refresh(producto, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        producto.setStockActual(Math.addExact(producto.getStockActual(), detalle.getCantidad()));
+        venta.setCuentaSolicitada(false); venta.setFechaSolicitudCuenta(null);
+        if (venta.getDetalles().stream().allMatch(d -> d.getEstadoPreparacion() == EstadoPreparacion.CANCELADO)) {
+            venta.setEstado(EstadoVenta.ANULADA);
+            venta.setEstadoCuenta(EstadoCuenta.CERRADA);
+            if (mesa != null) mesa.setEstado(EstadoMesa.LIBRE);
+        }
+        cargarCuenta(venta);
+        events.changed(true);
+        return venta;
     }
 
     @Transactional(readOnly = true)
@@ -277,7 +308,7 @@ public class VentaService {
 
     private void registrarAbono(Venta venta, RegistrarPagoRequest request, Integer usuarioId) {
         BigDecimal monto = request.monto();
-        BigDecimal recibido = request.metodoPago() == MetodoPago.efectivo ? request.montoRecibido() : monto;
+        BigDecimal recibido = request.metodoPago() == MetodoPago.EFECTIVO ? request.montoRecibido() : monto;
         String referencia = request.referencia() == null ? "" : request.referencia().trim();
         var existente = venta.getPagos().stream()
                 .filter(p -> p.getClaveOperacion().equals(request.claveOperacion())).findFirst().orElse(null);

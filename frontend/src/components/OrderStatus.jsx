@@ -1,5 +1,5 @@
 export const preparationLabels = {
-  PENDIENTE: 'Pendiente', EN_PREPARACION: 'Preparando', PREPARANDO: 'Preparando', LISTO: 'Listo para entregar', SERVIDO: 'Entregado'
+  PENDIENTE: 'Pendiente', EN_PREPARACION: 'Preparando', PREPARANDO: 'Preparando', LISTO: 'Listo para entregar', SERVIDO: 'Entregado', CANCELADO: 'Cancelado'
 }
 export const money = (amount) => Number(amount || 0).toFixed(2)
 export function PaymentBadge({ sale }) {

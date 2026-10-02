@@ -8,14 +8,15 @@ import java.util.List;
 public record ComprobanteResponse(Integer id, String tipo, String numero, String empresaRuc,
         String empresaNombre, String empresaDireccion, String clienteDocumento, String clienteNombre,
         String clienteDireccion, BigDecimal subtotal, BigDecimal igv, BigDecimal total,
-        OffsetDateTime fechaEmision, List<Linea> detalles) {
+        OffsetDateTime fechaEmision, List<Linea> detalles, MiTrampita.SistemaPOS.entity.TipoDocumento tipoComprobante,
+        String ruc, String razonSocial, String dni) {
     public static ComprobanteResponse from(Comprobante c) {
         if (c == null) return null;
         return new ComprobanteResponse(c.getId(), c.getTipo(), c.getSerie() + "-" + String.format("%08d", c.getCorrelativo()),
             c.getEmpresaRuc(), c.getEmpresaNombre(), c.getEmpresaDireccion(), c.getClienteDocumento(),
             c.getClienteNombre(), c.getClienteDireccion(), c.getSubtotal(), c.getIgv(), c.getTotal(),
             c.getFechaEmision(), c.getDetalles().stream().map(d -> new Linea(d.getId(), d.getProducto(),
-                d.getCantidad(), d.getPrecioUnitario(), d.getSubtotal())).toList());
+                d.getCantidad(), d.getPrecioUnitario(), d.getSubtotal())).toList(), c.getTipoDocumento(), c.getRuc(), c.getRazonSocial(), c.getDni());
     }
     public record Linea(Integer id, String producto, Integer cantidad, BigDecimal precioUnitario, BigDecimal subtotal) { }
 }

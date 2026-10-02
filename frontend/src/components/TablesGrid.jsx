@@ -5,7 +5,7 @@ import '../styles/tables.css'
 
 export function tableStatus(mesa, sale) {
   if (sale?.cuentaSolicitada) return 'billing'
-  if (sale?.detalles.some(item => item.estadoPreparacion !== 'SERVIDO')) return 'waiting'
+  if (sale?.detalles.some(item => !['SERVIDO', 'CANCELADO'].includes(item.estadoPreparacion))) return 'waiting'
   return mesa.estado === 'LIBRE' && !sale ? 'free' : 'occupied'
 }
 const states = { free: ['Libre', Armchair], occupied: ['Comiendo', Utensils], billing: ['Por cobrar', CheckCheck], waiting: ['Esperando comida', Clock3] }
@@ -35,7 +35,7 @@ export default function TablesGrid({ areas, mesas, openSales, selectedMesaId, on
       return <button type="button" disabled={disabled} onClick={() => onSelect(mesa)} key={mesa.id} aria-pressed={String(selectedMesaId) === String(mesa.id)} className={`table-tile ${state} ${String(selectedMesaId) === String(mesa.id) ? 'selected' : ''}`}>
         <div className="table-tile-top"><span className="table-state"><i />{label}</span><span className="table-capacity"><Users size={13} />{mesa.capacidad}</span></div>
         <div className="table-tile-center"><span className="table-furniture"><Icon size={23} /></span><strong><small>MESA</small>{String(mesa.numero).padStart(2, '0')}</strong></div>
-        <div className="table-tile-footer">{sale ? <><span><Clock3 size={13} />{elapsed(sale.fechaVenta, now)}</span><b>S/ {money(sale.total)}</b></> : <span>{state === 'free' ? 'Abrir mesa →' : 'Tomar pedido →'}</span>}</div>
+        <div className="table-tile-footer">{sale ? <><span><Clock3 size={13} />{elapsed(sale.fechaVenta, now)}</span><b>Saldo S/ {money(sale.saldoPendiente)}</b></> : <span>{state === 'free' ? 'Abrir mesa →' : 'Tomar pedido →'}</span>}</div>
         {ready > 0 && <span className="table-ready" role="status"><CheckCheck size={14} />{ready} listo{ready !== 1 ? 's' : ''} para recoger</span>}
       </button>
     })}</div>

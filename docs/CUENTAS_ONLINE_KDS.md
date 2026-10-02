@@ -1,5 +1,7 @@
 # Cuentas abiertas, recepción online y cocina
 
+> Versión histórica. La guía vigente de facturación, cancelaciones, métodos y permisos es [CAJA_AVANZADA_07.md](CAJA_AVANZADA_07.md). Aplicar también la migración 07.
+
 > Esta guía describe la versión 05. El código actual requiere también 06; consulta [Caja, WhatsApp y KDS](CAJA_WHATSAPP_KDS.md). La sección SQL 05 termina antes del encabezado 06.
 
 

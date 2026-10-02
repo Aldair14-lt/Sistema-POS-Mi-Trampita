@@ -28,6 +28,7 @@ public interface DetalleVentaRepository extends JpaRepository<DetalleVenta, Inte
                sum(d.subtotal) as importe
         from DetalleVenta d where d.venta.cliente.id = :clienteId
           and d.venta.estado = MiTrampita.SistemaPOS.entity.EstadoVenta.CERRADA
+          and d.estadoPreparacion <> MiTrampita.SistemaPOS.entity.EstadoPreparacion.CANCELADO
         group by d.producto.id, d.producto.nombre, d.producto.categoria.nombre
         order by sum(d.cantidad) desc, d.producto.nombre asc
         """)

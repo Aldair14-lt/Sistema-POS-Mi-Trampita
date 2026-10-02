@@ -1,0 +1,18 @@
+{
+  "baseURL": "http://127.0.0.1:15173",
+  "fecha": "2026-10-02T16:40:31.407Z",
+  "venta": 25,
+  "comprobante": "F001-00000005",
+  "pedidoWhatsApp": 28,
+  "verificaciones": [
+    "abono efectivo y vuelto",
+    "factura, boleta y ticket condicionales",
+    "modal móvil sin desbordamiento",
+    "cierre libera mesa",
+    "recibo térmico",
+    "roles exclusivos",
+    "KDS listo notifica a Mozo",
+    "WhatsApp con adelanto Yape"
+  ],
+  "erroresJavaScript": []
+}

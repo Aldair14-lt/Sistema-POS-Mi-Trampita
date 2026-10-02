@@ -1,6 +1,8 @@
 # Caja, WhatsApp, mesas y Cocina
 
-El código incorpora Caja y recepción, ingreso manual de pedidos de WhatsApp/Web, pagos parciales, comprobantes y avisos en vivo. Requiere Java 21 y las migraciones hasta la versión **06**. Se mantiene `ddl-auto=validate` y la sesión con CSRF.
+> Versión histórica. La guía vigente de facturación, cancelaciones, métodos y permisos es [CAJA_AVANZADA_07.md](CAJA_AVANZADA_07.md). Aplicar también la migración 07.
+
+El código incorpora Caja y recepción, ingreso manual de pedidos de WhatsApp/Web, pagos parciales, comprobantes y avisos en vivo. Requiere Java 21 y las migraciones hasta la versión **07**. Se mantiene `ddl-auto=validate` y la sesión con CSRF.
 
 ## Instalación y actualización
 
@@ -13,11 +15,12 @@ Para una instalación nueva, ejecuta completo el archivo de tu motor. Para una b
 
 | Última versión instalada | Secciones que debes ejecutar |
 | --- | --- |
-| 04 | 05 y después 06 |
-| 05 | Solo 06 |
-| 06 | Ninguna |
+| 04 | 05, 06 y 07 |
+| 05 | 06 y 07 |
+| 06 | Solo 07 |
+| 07 | Ninguna |
 
-La sección nueva comienza en `06. MIGRACIÓN DE BASE EXISTENTE / CAJA, WHATSAPP Y COMPROBANTES`. No ejecutes el instalador completo sobre la base existente. La sección 05 termina justo antes del encabezado 06. Para versiones anteriores consulta [la guía de escalamiento](IMPLEMENTACION_ESCALAMIENTO.md).
+La sección 05 termina antes del encabezado 06; la 06 termina antes del encabezado 07. La sección 07 va desde `07. FACTURACIÓN EN CAJA Y CANCELACIONES.` hasta el final del mismo archivo. No ejecutes el instalador completo sobre la base existente. Para versiones anteriores consulta [la guía de escalamiento](IMPLEMENTACION_ESCALAMIENTO.md).
 
 La migración 06 crea `comprobantes` y `detalle_comprobante`, añade teléfono de entrega, solicitud de cuenta y contador por serie, y admite `WHATSAPP`, `WEB`, `yape` y `plin`. Convierte `EN_PREPARACION` a `PREPARANDO`. Conserva ventas, pagos e inventario; reserva los números históricos del formato `SERIE-NÚMERO` sin renumerarlos ni emitir boletas retrospectivas. `ONLINE` y `yape_plin` se mantienen para los registros anteriores.
 

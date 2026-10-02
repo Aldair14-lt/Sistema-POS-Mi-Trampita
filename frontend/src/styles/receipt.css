@@ -1,0 +1,15 @@
+.receipt-paper.thermal-receipt { width: 72mm; background: #fff; font: 11px/1.4 'Courier New', monospace; }
+.thermal-receipt .receipt-header { gap: 3px; }
+.thermal-receipt .receipt-header strong { font-size: 15px; }
+.thermal-receipt .receipt-title { display: flex; flex-direction: column; gap: 4px; text-align: center; border: 0; border-block: 1px dashed #333; padding: 10px 0; margin: 12px 0; }
+.thermal-receipt table { table-layout: fixed; }
+.thermal-receipt th:first-child { width: 42%; }
+.receipt-paper.thermal-receipt th, .receipt-paper.thermal-receipt td { border: 0; border-bottom: 1px dotted #bbb; padding: 5px 2px; font-size: 10px; overflow-wrap: anywhere; background: white; }
+.thermal-receipt .receipt-totals { border-top: 1px dashed #333; padding-top: 10px; }
+.thermal-receipt .receipt-fiscal-note { text-align: center; font-size: 9px; border-top: 1px dashed #333; padding-top: 10px; }
+@media print {
+  @page { margin: 4mm; }
+  body { background: #fff; }
+  body:has(> .thermal-receipt) > #root { display: none !important; }
+  .print-only.thermal-receipt { position: static !important; width: 72mm !important; max-width: 72mm; margin: 0; }
+}

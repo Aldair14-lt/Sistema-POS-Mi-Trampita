@@ -22,7 +22,7 @@ public record VentaResponse(Integer id, Empresa empresa, UsuarioResumen usuario,
                 v.getFechaVenta(), v.getFechaCobro(), v.getDetalles().stream().map(d -> new DetalleResponse(d.getId(),
                     new ProductoResumen(d.getProducto().getId(), d.getProducto().getNombre()),
                     d.getCantidad(), d.getPrecioUnitario(), d.getSubtotal(), d.getEstadoPreparacion(),
-                    d.getFechaPedido(), d.getFechaEstado())).toList(),
+                    d.getFechaPedido(), d.getFechaEstado(), d.getMotivoCancelacion())).toList(),
                 v.getEstadoCuenta(), v.getOrigenPedido(), v.getTipoEntrega(), v.getDireccionEnvio(),
                 abonado, v.getTotal().subtract(abonado), v.getPagos().stream().map(p -> new PagoResponse(
                     p.getId(), p.getMonto(), p.getMetodoPago(), p.getMontoRecibido(),
@@ -34,7 +34,7 @@ public record VentaResponse(Integer id, Empresa empresa, UsuarioResumen usuario,
     public record ProductoResumen(Integer id, String nombre) { }
     public record DetalleResponse(Integer id, ProductoResumen producto, Integer cantidad,
             BigDecimal precioUnitario, BigDecimal subtotal, EstadoPreparacion estadoPreparacion,
-            OffsetDateTime fechaPedido, OffsetDateTime fechaEstado) { }
+            OffsetDateTime fechaPedido, OffsetDateTime fechaEstado, String motivoCancelacion) { }
     public record PagoResponse(Integer id, BigDecimal monto, MetodoPago metodoPago, BigDecimal montoRecibido,
             BigDecimal vuelto, String referencia, OffsetDateTime fechaPago, String registradoPor, String claveOperacion) { }
 }

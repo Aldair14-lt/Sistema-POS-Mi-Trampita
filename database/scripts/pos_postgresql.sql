@@ -1,12 +1,16 @@
 -- ============================================================================
--- POS MI TRAMPITA — INSTALACIÓN COMPLETA PARA POSTGRESQL 14+
+-- POS MI TRAMPITA — SCRIPT ÚNICO PARA POSTGRESQL 14+ (VERSIONES 01 A 07)
 --
 -- Base nueva: crear pos_db, conectarse a ella y ejecutar este archivo completo.
 -- Base existente: respaldo previo y ejecutar solo las migraciones pendientes
--- (03, 04 y/o 05), nunca la sección de instalación.
--- Si ya tiene 04, seleccionar únicamente la sección 05 hasta el fin del archivo.
--- Si ya tiene 05, no repetir: se protege el inventario contra dobles descuentos.
--- Backend detenido. Las migraciones 04 y 05 son transaccionales.
+-- (03 a 07), nunca la sección de instalación.
+-- Si ya tiene 04: ejecutar las secciones 05, 06 y 07 de este mismo archivo.
+-- Si ya tiene 05: ejecutar las secciones 06 y 07 de este mismo archivo.
+-- Si ya tiene 06: ejecutar solo desde el encabezado 07 hasta el final.
+-- Si ya tiene 07: no ejecutar ninguna sección; la base ya está actualizada.
+-- Cada sección termina antes del siguiente encabezado numerado.
+-- No repetir migraciones: se protege el inventario contra dobles descuentos.
+-- Backend detenido. Las migraciones 04, 05, 06 y 07 son transaccionales.
 -- ============================================================================
 
 -- 01. ESQUEMA BASE
@@ -368,4 +372,56 @@ CREATE INDEX idx_caja_cuentas ON ventas(cuenta_solicitada,estado_venta,fecha_sol
 INSERT INTO rol(nombre_rol,descripcion) VALUES('COCINERO','Acceso exclusivo a cocina')
 ON CONFLICT(nombre_rol) DO NOTHING;
 INSERT INTO pos_migraciones(version) VALUES('06_caja_whatsapp_comprobantes');
+COMMIT;
+
+-- 07. FACTURACIÓN EN CAJA Y CANCELACIONES. Requiere 06; backend detenido.
+BEGIN;
+DO $$ BEGIN
+  IF EXISTS(SELECT 1 FROM pos_migraciones WHERE version='07_caja_fiscal_cancelaciones') THEN
+    RAISE EXCEPTION 'La migración 07 ya fue aplicada';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='06_caja_whatsapp_comprobantes') THEN
+    RAISE EXCEPTION 'Primero aplica la migración 06';
+  END IF;
+  IF EXISTS(SELECT 1 FROM comprobantes WHERE upper(replace(tipo,' ','_')) NOT IN ('NOTA_DE_VENTA','NOTA_VENTA','BOLETA','FACTURA')) THEN
+    RAISE EXCEPTION 'Revisar tipos históricos de comprobantes antes de migrar';
+  END IF;
+END $$;
+LOCK TABLE comprobantes, ventas, pagos_venta, detalle_venta IN ACCESS EXCLUSIVE MODE;
+ALTER TABLE comprobantes
+  ADD COLUMN tipo_comprobante VARCHAR(20),
+  ADD COLUMN ruc VARCHAR(11),
+  ADD COLUMN razon_social VARCHAR(150),
+  ADD COLUMN dni VARCHAR(8);
+UPDATE comprobantes SET
+  tipo_comprobante=CASE WHEN upper(replace(tipo,' ','_')) IN ('NOTA_DE_VENTA','NOTA_VENTA') THEN 'NOTA_VENTA' ELSE upper(tipo) END,
+  ruc=CASE WHEN upper(tipo)='FACTURA' THEN cliente_documento END,
+  razon_social=CASE WHEN upper(tipo)='FACTURA' THEN cliente_nombre END,
+  dni=CASE WHEN upper(tipo)='BOLETA' AND cliente_documento ~ '^[0-9]{8}$' THEN cliente_documento END;
+ALTER TABLE comprobantes
+  ALTER COLUMN tipo_comprobante SET NOT NULL,
+  ADD CONSTRAINT ck_comprobante_tipo CHECK(tipo_comprobante IN ('NOTA_VENTA','BOLETA','FACTURA')),
+  ADD CONSTRAINT ck_comprobante_fiscal CHECK(
+    (tipo_comprobante='FACTURA' AND ruc IS NOT NULL AND ruc ~ '^[0-9]{11}$'
+      AND razon_social IS NOT NULL AND length(trim(razon_social))>0 AND dni IS NULL)
+    OR (tipo_comprobante<>'FACTURA' AND ruc IS NULL AND razon_social IS NULL)),
+  ADD CONSTRAINT ck_comprobante_dni CHECK(dni IS NULL OR (tipo_comprobante='BOLETA' AND dni ~ '^[0-9]{8}$'));
+
+ALTER TABLE ventas DROP CONSTRAINT ck_venta_metodo_pago;
+ALTER TABLE pagos_venta DROP CONSTRAINT ck_pago_metodo;
+UPDATE ventas SET metodo_pago=upper(metodo_pago);
+UPDATE pagos_venta SET metodo_pago=upper(metodo_pago);
+ALTER TABLE ventas ALTER COLUMN metodo_pago SET DEFAULT 'EFECTIVO';
+ALTER TABLE ventas ADD CONSTRAINT ck_venta_metodo_pago CHECK(metodo_pago IN ('EFECTIVO','YAPE','PLIN','TARJETA','TRANSFERENCIA','YAPE_PLIN'));
+ALTER TABLE pagos_venta ADD CONSTRAINT ck_pago_metodo CHECK(metodo_pago IN ('EFECTIVO','YAPE','PLIN','TARJETA','TRANSFERENCIA','YAPE_PLIN'));
+
+ALTER TABLE detalle_venta DROP CONSTRAINT ck_detalle_preparacion;
+ALTER TABLE detalle_venta
+  ADD COLUMN motivo_cancelacion VARCHAR(255),
+  ADD COLUMN cancelado_por INT REFERENCES usuario(id_usuario),
+  ADD CONSTRAINT ck_detalle_preparacion CHECK(estado_preparacion IN ('PENDIENTE','PREPARANDO','LISTO','SERVIDO','CANCELADO')),
+  ADD CONSTRAINT ck_detalle_cancelacion CHECK(estado_preparacion<>'CANCELADO' OR
+    (motivo_cancelacion IS NOT NULL AND length(trim(motivo_cancelacion))>0 AND cancelado_por IS NOT NULL));
+-- No se modifica stock ni importes: los platos existentes conservan su estado.
+INSERT INTO pos_migraciones(version) VALUES('07_caja_fiscal_cancelaciones');
 COMMIT;

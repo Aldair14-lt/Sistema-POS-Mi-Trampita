@@ -9,6 +9,7 @@ import { permissions } from './permissions'
 import TablesView from './TablesView'
 import Receipt from './Receipt'
 import UniversalPaymentModal from './components/UniversalPaymentModal'
+import CancelItemButton from './components/CancelItemButton'
 import OrderStatus from './components/OrderStatus'
 import useOperationEvents from './hooks/useOperationEvents'
 import useOrderAlerts from './hooks/useOrderAlerts'
@@ -396,6 +397,13 @@ export default function SalesPos({ session }) {
             <span>{detail.cantidad} × {detail.producto?.nombre || 'Producto'}<OrderStatus state={detail.estadoPreparacion} /></span>
             <b>S/ {formatMoney(detail.subtotal)}</b>
             {canOrder && detail.estadoPreparacion === 'LISTO' && <button type="button" className="secondary-button" disabled={saving} onClick={() => serveItem(detail)}>Entregado</button>}
+            {(canOrder || canCharge) && <CancelItemButton item={detail} onUpdated={updated => {
+              setOpenSales(current => updated.estado === 'ANULADA' ? current.filter(sale => sale.id !== updated.id) : current.map(sale => sale.id === updated.id ? updated : sale))
+              if (updated.estado === 'ANULADA') { setActiveSaleId(''); setSelectedMesaId(''); setCart([]) }
+              api.list('/api/productos').then(setProducts).catch(err => setError(err.message))
+              api.list('/api/mesas').then(setMesas).catch(err => setError(err.message))
+              setNotice('Plato cancelado. Stock y saldo actualizados.')
+            }} />}
           </div>)}</div>}
           {!cart.length ? (!activeSale && <EmptyPos text={canOrder ? 'Agrega productos para comenzar.' : 'Selecciona una mesa con comanda abierta.'} />) : cart.map((item) => <div className="cart-item" key={item.id}>
             <div className="cart-item-info"><strong>{item.nombre}</strong><small>S/ {formatMoney(item.precioVenta)} c/u · stock {item.stockActual}</small></div>
@@ -432,7 +440,7 @@ export default function SalesPos({ session }) {
           {lastOrder && canOrder && <button type="button" className="secondary-button full" onClick={() => printTicket(lastOrder, 'COMANDA')}><Printer size={15} /> Imprimir comanda completa para cocina</button>}
           {lastSale && canCharge && <div className="sale-success"><CheckCircle2 size={16} /><span>Venta cobrada.</span><button type="button" className="print-sale-button" onClick={() => printTicket(lastSale, 'COMPROBANTE')}><Printer size={15} /> Imprimir comprobante</button></div>}
           {canOrder && <button type="button" className="primary-button full" onClick={submitSale} disabled={saving || !cart.length || activeSale?.estadoCuenta === 'CERRADA'}>{saving ? 'Guardando pedido...' : activeSale ? `Enviar adicional S/ ${formatMoney(additionalTotal)}` : `Enviar comanda S/ ${formatMoney(total)}`}</button>}
-          {canOrder && activeSale && <button type="button" className="secondary-button full" disabled={saving || cart.length > 0 || activeSale.cuentaSolicitada || activeSale.detalles.some(item => item.estadoPreparacion !== 'SERVIDO')} onClick={requestBill}>{activeSale.cuentaSolicitada ? 'Cuenta solicitada a Caja' : 'Solicitar cuenta a Caja'}</button>}
+          {canOrder && activeSale && <button type="button" className="secondary-button full" disabled={saving || cart.length > 0 || activeSale.cuentaSolicitada || activeSale.detalles.some(item => !['SERVIDO', 'CANCELADO'].includes(item.estadoPreparacion))} onClick={requestBill}>{activeSale.cuentaSolicitada ? 'Cuenta solicitada a Caja' : 'Solicitar cuenta a Caja'}</button>}
           {canCharge && activeSale && <button type="button" className="secondary-button full" onClick={() => setPaymentId(activeSale.id)} disabled={saving || cart.length > 0}>Pagos parciales / cerrar cuenta</button>}
         </div>
       </section>

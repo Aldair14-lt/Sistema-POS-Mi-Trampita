@@ -3,9 +3,9 @@ Un proyecto de sistema POS
 
 ## Inicio rápido
 
-1. Para una instalación nueva, crea la base `pos_db` en PostgreSQL y ejecuta `database/scripts/pos_postgresql.sql` completo. Para MySQL, ejecuta `database/scripts/pos_mysql.sql` completo. Cada archivo incluye el esquema y todas las migraciones, incluida la sección 06 de Caja, WhatsApp y comprobantes.
+1. Para una instalación nueva, crea la base `pos_db` en PostgreSQL y ejecuta `database/scripts/pos_postgresql.sql` completo. Para MySQL, ejecuta `database/scripts/pos_mysql.sql` completo. Cada archivo incluye el esquema y todas las migraciones hasta la sección 07 de facturación y cancelaciones.
    No ejecutes el instalador completo sobre una base existente: respáldala y sigue las instrucciones de migración en `docs/IMPLEMENTACION_ESCALAMIENTO.md`.
-   Si ya tiene 04, aplica 05 y después 06; si ya tiene 05, aplica solo 06. No repitas las secciones instaladas. La guía vigente con rutas, permisos, archivos y pruebas es [CAJA_WHATSAPP_KDS.md](docs/CAJA_WHATSAPP_KDS.md).
+   Solo existen **dos scripts SQL**, uno por motor. Aplica las versiones pendientes desde las secciones del mismo archivo, en orden 05 → 06 → 07. Si ya tiene 06, ejecuta únicamente la sección 07 hasta el final de `pos_postgresql.sql` o `pos_mysql.sql`. Si ya tiene 07, no repitas ninguna sección. La guía vigente con rutas, contratos, permisos y pruebas es [CAJA_AVANZADA_07.md](docs/CAJA_AVANZADA_07.md).
 2. Inicia el backend desde `backend/SistemaPOS`:
 
    ```powershell
