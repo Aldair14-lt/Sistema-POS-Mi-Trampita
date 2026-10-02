@@ -42,7 +42,7 @@ public class Usuario {
     @Column(name = "pin_caja", length = 255)
     private String pinCaja;
     @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, length = 20)
     private EstadoUsuario estado = EstadoUsuario.activo;
     @Column(name = "fecha_creacion", insertable = false, updatable = false)

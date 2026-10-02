@@ -4,13 +4,20 @@ import {
   ShoppingCart, UserRound, X
 } from 'lucide-react'
 import { api } from './api'
+import { flushSync } from 'react-dom'
+import { permissions } from './permissions'
+import TablesView from './TablesView'
+import Receipt from './Receipt'
+import UniversalPaymentModal from './components/UniversalPaymentModal'
+import OrderStatus from './components/OrderStatus'
 
 const blankCustomer = {
   numeroDocumento: '',
   nombresRazonSocial: '',
   direccion: '',
   telefono: '',
-  correo: ''
+  correo: '',
+  fechaNacimiento: ''
 }
 
 function formatMoney(value) {
@@ -25,6 +32,11 @@ function receiptLabel(name) {
 }
 
 export default function SalesPos({ session }) {
+  const { canOrder, canCharge } = permissions(session)
+  const [areas, setAreas] = useState([])
+  const [lastOrder, setLastOrder] = useState(null)
+  const [printDocument, setPrintDocument] = useState(null)
+  const printTicket = (sale, printType) => { flushSync(() => setPrintDocument({ ...sale, printType })); window.print() }
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [brands, setBrands] = useState([])
@@ -40,9 +52,8 @@ export default function SalesPos({ session }) {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [brandFilter, setBrandFilter] = useState('')
   const [comprobanteId, setComprobanteId] = useState('')
-  const [metodoPago, setMetodoPago] = useState('efectivo')
+  const [paymentId, setPaymentId] = useState(null)
   const [customer, setCustomer] = useState(blankCustomer)
-  const [amountReceived, setAmountReceived] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -55,20 +66,22 @@ export default function SalesPos({ session }) {
       api.list('/api/productos'),
       api.list('/api/categorias'),
       api.list('/api/marcas'),
-      api.list('/api/clientes'),
-      api.list('/api/empresas'),
+      api.list('/api/pos/clientes'),
+      api.list('/api/pos/configuracion'),
       api.list('/api/tipos-comprobante'),
-      api.list('/api/ventas'),
-      api.list('/api/mesas')
-    ]).then(([productData, categoryData, brandData, clientData, companyData, receiptData, salesData, mesaData]) => {
+      api.list('/api/ventas/abiertas'),
+      api.list('/api/mesas'),
+      api.list('/api/areas')
+    ]).then(([productData, categoryData, brandData, clientData, companyData, receiptData, salesData, mesaData, areaData]) => {
       setProducts(productData)
       setCategories(categoryData)
       setBrands(brandData)
       setClients(clientData)
       setEmpresas(companyData)
       setComprobantes(receiptData)
-      setOpenSales(salesData.filter((sale) => sale.estado === 'ABIERTA'))
+      setOpenSales(salesData.filter((sale) => sale.estado === 'ABIERTA' && sale.origenPedido === 'LOCAL'))
       setMesas(mesaData)
+      setAreas(areaData)
       if (!comprobanteId && receiptData.length) {
         const preferred = [...receiptData].sort((a, b) => {
           const order = { BOLETA: 0, FACTURA: 1 }
@@ -77,6 +90,18 @@ export default function SalesPos({ session }) {
         setComprobanteId(String(preferred[0].id))
       }
     }).catch((err) => setError(err.message)).finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    const refresh = async () => {
+      try {
+        const [tables, sales, stock] = await Promise.all([api.list('/api/mesas'), api.list('/api/ventas/abiertas'), api.list('/api/productos')])
+        if (mounted) { setMesas(tables); setOpenSales(sales.filter(sale => sale.origenPedido === 'LOCAL')); setProducts(stock) }
+      } catch (err) { if (mounted) setError(err.message) }
+    }
+    const timer = setInterval(refresh, 5000)
+    return () => { mounted = false; clearInterval(timer) }
   }, [])
 
   const selectedReceipt = useMemo(
@@ -99,10 +124,9 @@ export default function SalesPos({ session }) {
   }, [products, search, categoryFilter, brandFilter])
   const additionalSubtotal = cart.reduce((sum, item) => sum + Number(item.precioVenta || 0) * item.cantidad, 0)
   const subtotal = additionalSubtotal + Number(activeSale?.subtotal || 0)
-  const igv = subtotal * 0.18
-  const total = subtotal + igv
+  const igv = Math.round((subtotal * 0.18 + Number.EPSILON) * 100) / 100
+  const total = !cart.length && activeSale ? Number(activeSale.total) : Math.round((subtotal + igv + Number.EPSILON) * 100) / 100
   const additionalTotal = additionalSubtotal * 1.18
-  const change = Math.max(0, Number(amountReceived || 0) - total)
 
   useEffect(() => {
     const document = customer.numeroDocumento.trim()
@@ -114,7 +138,8 @@ export default function SalesPos({ session }) {
         nombresRazonSocial: existing.nombresRazonSocial || '',
         direccion: existing.direccion || '',
         telefono: existing.telefono || '',
-        correo: existing.correo || ''
+        correo: existing.correo || '',
+        fechaNacimiento: existing.fechaNacimiento || ''
       })
     }
   }, [customer.numeroDocumento, clients])
@@ -126,9 +151,12 @@ export default function SalesPos({ session }) {
   }
 
   const selectOpenSale = (value) => {
+    if (saving) return
+    if (cart.length) return setError('Envía o quita los productos pendientes antes de cambiar de mesa.')
     setActiveSaleId(value)
     setCart([])
     setLastSale(null)
+    setLastOrder(null)
     setError('')
     setNotice('')
     const sale = openSales.find((item) => String(item.id) === String(value))
@@ -138,30 +166,36 @@ export default function SalesPos({ session }) {
         nombresRazonSocial: sale.cliente.nombresRazonSocial || '',
         direccion: sale.cliente.direccion || '',
         telefono: sale.cliente.telefono || '',
-        correo: sale.cliente.correo || ''
+        correo: sale.cliente.correo || '',
+        fechaNacimiento: sale.cliente.fechaNacimiento || ''
       })
     }
     if (sale) {
       setSelectedMesaId(String(sale.mesa?.id || ''))
-      setMetodoPago(sale.metodoPago || 'efectivo')
     } else {
       setSelectedMesaId('')
     }
   }
 
   const selectMesa = (mesa) => {
+    if (cart.length && String(selectedMesaId) !== String(mesa.id)) return setError('Envía o quita los productos pendientes antes de cambiar de mesa.')
+    if (String(selectedMesaId) === String(mesa.id)) return
     const sale = openSales.find((item) => item.mesa?.id === mesa.id)
     if (sale) return selectOpenSale(String(sale.id))
-    if (mesa.estado === 'RESERVADA') return setError(`La mesa ${mesa.numero} está reservada.`)
+    if (mesa.estado === 'ATENDIENDO') return setError('Actualiza el salón para cargar la comanda de esta mesa.')
     setActiveSaleId('')
     setSelectedMesaId(String(mesa.id))
     setCart([])
     setLastSale(null)
+    setLastOrder(null)
     setError('')
     setNotice('')
   }
 
   const addToCart = (product) => {
+    if (!canOrder || saving) return
+    if (activeSale?.estadoCuenta === 'CERRADA') return setError('La cuenta ya está pagada. Finaliza la entrega y el cierre.')
+    if (!selectedMesaId) return setError('Selecciona una mesa antes de tomar el pedido.')
     if (Number(product.stockActual) <= 0) return setError('Este producto no tiene stock disponible.')
     setError('')
     setCart((current) => {
@@ -176,6 +210,7 @@ export default function SalesPos({ session }) {
   }
 
   const updateQuantity = (id, delta) => {
+    if (saving) return
     setError('')
     setCart((current) => current.flatMap((item) => {
       if (item.id !== id) return [item]
@@ -188,9 +223,13 @@ export default function SalesPos({ session }) {
     }))
   }
 
-  const removeFromCart = (id) => setCart((current) => current.filter((item) => item.id !== id))
+  const removeFromCart = (id) => !saving && setCart((current) => current.filter((item) => item.id !== id))
 
   const submitSale = async () => {
+    if (!canOrder || saving) return
+    if (activeSale?.estadoCuenta === 'CERRADA') return setError('La cuenta ya está pagada. Finaliza la entrega y el cierre.')
+    if (!selectedMesaId) return setError('Faltan datos de la mesa. Selecciona una mesa del salón.')
+    if (activeSaleId && !activeSale) return setError('La comanda ya no está abierta. Vuelve a seleccionar la mesa.')
     setError('')
     setNotice('')
     if (activeSale) {
@@ -198,14 +237,13 @@ export default function SalesPos({ session }) {
       setSaving(true)
       try {
         const updatedSale = await api.patch(`/api/ventas/${activeSale.id}/items`, {
-          items: cart.map((item) => ({ productoId: item.id, cantidad: item.cantidad })),
-          metodoPago
+          items: cart.map((item) => ({ productoId: item.id, cantidad: item.cantidad }))
         })
         setOpenSales((current) => current.map((sale) => sale.id === updatedSale.id ? updatedSale : sale))
         setCart([])
-        setMetodoPago(updatedSale.metodoPago || metodoPago)
-        setProducts(await api.list('/api/productos'))
-        setNotice(`Adicional enviado a cocina. Comanda ${updatedSale.numeroComprobante} actualizada.`)
+        setLastOrder({ ...updatedSale, detalles: updatedSale.detalles })
+        api.list('/api/productos').then(setProducts).catch(err => setError(err.message))
+        setNotice(`Adicional registrado. Comanda ${updatedSale.numeroComprobante} actualizada.`)
       } catch (err) {
         setError(err.message || 'No se pudo actualizar la comanda.')
       } finally {
@@ -215,7 +253,7 @@ export default function SalesPos({ session }) {
     }
     const document = customer.numeroDocumento.trim()
     const name = customer.nombresRazonSocial.trim()
-    if (!empresas.length) return setError('Registra primero los datos de tu empresa en Administración > Empresas.')
+    if (!empresas.length) return setError('Solicita al administrador completar los datos fiscales en Configuración.')
     if (!selectedReceipt) return setError('Selecciona el tipo de comprobante.')
     if (!cart.length) return setError('Agrega al menos un producto al carrito.')
     if (!/^\d{6,20}$/.test(document)) return setError('El documento debe contener entre 6 y 20 dígitos.')
@@ -227,31 +265,28 @@ export default function SalesPos({ session }) {
     try {
       const sale = await api.create('/api/ventas', {
         empresaId: empresas[0].id,
-        usuarioId: session.id,
         cliente: {
           ...customer,
           numeroDocumento: document,
           nombresRazonSocial: name,
           direccion: customer.direccion.trim(),
           telefono: customer.telefono.trim(),
-          correo: customer.correo.trim()
+          correo: customer.correo.trim(),
+          fechaNacimiento: customer.fechaNacimiento || null
         },
         tipoComprobanteId: Number(selectedReceipt.id),
-        numeroComprobante: `${selectedReceipt.serie}-${Date.now().toString().slice(-8)}`,
-        metodoPago,
+        numeroComprobante: `${selectedReceipt.serie}-${crypto.randomUUID().slice(0, 18)}`,
         mesaId: selectedMesaId ? Number(selectedMesaId) : null,
         items: cart.map((item) => ({ productoId: item.id, cantidad: item.cantidad }))
       })
-      setLastSale({ ...sale, receiptName: selectedReceipt.nombre, receiptSeries: selectedReceipt.serie, customerName: name, customer, company: empresas[0], change })
+      setLastOrder(sale)
+      api.list('/api/productos').then(setProducts).catch(err => setError(err.message))
+      setNotice('Comanda registrada. Puedes imprimir el pedido para cocina.')
       setCart([])
-      setAmountReceived('')
       setActiveSaleId(String(sale.id))
       setSelectedMesaId(String(sale.mesa?.id || ''))
-      setMetodoPago(sale.metodoPago || metodoPago)
-      setProducts(await api.list('/api/productos'))
-      setClients(await api.list('/api/clientes'))
       setOpenSales((current) => [...current, sale].filter((item) => item.estado === 'ABIERTA'))
-      if (sale.mesa?.id) setMesas((current) => current.map((mesa) => mesa.id === sale.mesa.id ? { ...mesa, estado: 'OCUPADA' } : mesa))
+      if (sale.mesa?.id) setMesas((current) => current.map((mesa) => mesa.id === sale.mesa.id ? { ...mesa, estado: 'ATENDIENDO' } : mesa))
     } catch (err) {
       setError(err.message || 'No se pudo registrar la venta.')
     } finally {
@@ -259,56 +294,50 @@ export default function SalesPos({ session }) {
     }
   }
 
-  const closeSale = async () => {
-    if (!activeSale) return
-    setError('')
-    setNotice('')
-    if (cart.length) return setError('Envía primero los productos adicionales a cocina.')
-    if (metodoPago === 'efectivo' && Number(amountReceived || 0) < total) {
-      return setError('El monto recibido no puede ser menor que el total.')
-    }
-    setSaving(true)
+  const paymentUpdated = (sale) => {
+    if (sale.estado === 'CERRADA') {
+      setLastSale(sale); setLastOrder(null)
+      setOpenSales(current => current.filter(item => item.id !== sale.id))
+      setMesas(current => current.map(mesa => mesa.id === sale.mesa?.id ? { ...mesa, estado: 'LIBRE' } : mesa))
+      setActiveSaleId(''); setSelectedMesaId(''); setCart([])
+      setNotice(`Cuenta ${sale.numeroComprobante} cerrada. La mesa quedó libre.`)
+    } else setOpenSales(current => current.map(item => item.id === sale.id ? sale : item))
+  }
+
+  const serveItem = async (item) => {
+    if (saving) return
+    setSaving(true); setError('')
     try {
-      const closedSale = await api.patch(`/api/ventas/${activeSale.id}/cerrar`, {
-        metodoPago,
-        montoRecibido: metodoPago === 'efectivo' ? Number(amountReceived || 0) : null
-      })
-      setOpenSales((current) => current.filter((sale) => sale.id !== closedSale.id))
-      setMesas(await api.list('/api/mesas'))
-      setActiveSaleId('')
-      setSelectedMesaId('')
-      setCart([])
-      setAmountReceived('')
-      setNotice(`Venta ${closedSale.numeroComprobante} cerrada. La mesa quedó libre.`)
-    } catch (err) {
-      setError(err.message || 'No se pudo cerrar la venta.')
-    } finally {
-      setSaving(false)
-    }
+      await api.patch(`/api/ventas/items/${item.id}/servir`, { estado: 'SERVIDO', estadoActual: 'LISTO' })
+      const updated = await api.list(`/api/ventas/${activeSale.id}`)
+      setOpenSales(current => current.map(sale => sale.id === updated.id ? updated : sale))
+      setNotice('Plato entregado a la mesa.')
+    } catch (err) { setError(err.message) } finally { setSaving(false) }
+  }
+
+  const changeTableState = async (action) => {
+    setSaving(true); setError('')
+    try {
+      const table = await api.patch(`/api/mesas/${selectedMesaId}/${action}`, {})
+      setMesas(current => current.map(mesa => mesa.id === table.id ? table : mesa))
+      setNotice(action === 'abrir' ? 'Mesa ocupada. Puedes tomar el pedido.' : 'Mesa liberada.')
+    } catch (err) { setError(err.message) } finally { setSaving(false) }
   }
 
   if (loading) return <div className="loading">Cargando productos y configuración del POS...</div>
 
   return <>
     <div className="page-heading compact">
-      <div><span className="eyebrow">Operación / POS</span><h1>Punto de Venta</h1><p className="muted">Agrega productos, completa los datos del cliente y emite su comprobante.</p></div>
-      <div className="pos-company-badge"><span className="workspace-dot" /> {empresas[0]?.nombreComercial || empresas[0]?.razonSocial || 'Empresa pendiente'}</div>
+      <div><span className="eyebrow">Operación / POS</span><h1>Punto de Venta</h1><p className="muted">{canOrder ? 'Selecciona una mesa y registra su comanda.' : 'Selecciona una comanda para cobrar y liberar la mesa.'}</p></div>
+      <div className="pos-company-badge"><span className="workspace-dot" /> {empresas[0]?.nombreComercial || empresas[0]?.razonSocial || 'Configuración fiscal pendiente'}</div>
     </div>
-    <section className="mesa-board panel">
-      <div className="panel-head"><div><span className="eyebrow">Salón</span><h3>Mesas</h3></div><span className="result-count">{mesas.filter((mesa) => mesa.estado === 'LIBRE').length} libres · {openSales.length} comandas abiertas</span></div>
-      <div className="mesa-grid">
-        {mesas.map((mesa) => {
-          const openSale = openSales.find((sale) => sale.mesa?.id === mesa.id)
-          const status = openSale ? 'OCUPADA' : mesa.estado
-          return <button type="button" key={mesa.id} className={`mesa-card mesa-${status.toLowerCase()} ${String(selectedMesaId) === String(mesa.id) ? 'selected' : ''}`} onClick={() => selectMesa(mesa)}>
-            <strong>Mesa {mesa.numero}</strong><span>{openSale ? `S/ ${formatMoney(openSale.total)}` : status}</span><small>{mesa.capacidad} personas</small>
-          </button>
-        })}
-        {!mesas.length && <EmptyPos text="Registra mesas desde Directorio / Mesas." />}
-      </div>
-    </section>
-    <div className="pos-layout">
-      <section className="panel pos-products">
+    <TablesView areas={areas} mesas={mesas} openSales={openSales} selectedMesaId={selectedMesaId} onSelect={selectMesa} disabled={saving} />
+    {selectedMesaId && !activeSale && <div className="table-actions">
+      {canOrder && mesas.find(mesa => String(mesa.id) === String(selectedMesaId))?.estado === 'LIBRE' && <button className="secondary-button" disabled={saving} onClick={() => changeTableState('abrir')}>Ocupar mesa</button>}
+      {canCharge && mesas.find(mesa => String(mesa.id) === String(selectedMesaId))?.estado === 'OCUPADA' && <button className="secondary-button" disabled={saving} onClick={() => changeTableState('liberar')}>Liberar mesa sin pedido</button>}
+    </div>}
+    <div className={`pos-layout ${!canOrder ? 'cashier-layout' : ''}`}>
+      {canOrder && <section className="panel pos-products">
         <div className="table-toolbar">
           <div className="search-box"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nombre o código..." /></div>
           <span className="result-count">{filteredProducts.length} productos</span>
@@ -318,21 +347,25 @@ export default function SalesPos({ session }) {
           <div className="catalog-filter-row"><strong>Bebidas por marca</strong><button type="button" className={!brandFilter ? 'filter-chip active' : 'filter-chip'} onClick={() => setBrandFilter('')}>Todas</button>{brands.filter((brand) => brand.nombre?.toLowerCase() !== 'sin marca').map((brand) => <button type="button" className={String(brand.id) === String(brandFilter) ? 'filter-chip active' : 'filter-chip'} key={brand.id} onClick={() => setBrandFilter(String(brand.id))}>{brand.nombre}</button>)}</div>
         </div>
         <div className="product-grid">
-          {filteredProducts.map((product) => <button type="button" className="product-card" key={product.id} onClick={() => addToCart(product)} disabled={product.stockActual <= 0}>
+          {filteredProducts.map((product) => <button type="button" className="product-card" key={product.id} onClick={() => addToCart(product)} disabled={saving || product.stockActual <= 0 || activeSale?.estadoCuenta === 'CERRADA'}>
             <div className="product-card-top"><Package size={19} /><strong>S/ {formatMoney(product.precioVenta)}</strong></div>
             <strong>{product.nombre}</strong><small>{product.codigoBarras}</small>
             <span className={product.stockActual <= product.stockMinimo ? 'stock-warning' : 'stock-ok'}>Stock: {product.stockActual}</span>
           </button>)}
           {!filteredProducts.length && <EmptyPos text="No se encontraron productos." />}
         </div>
-      </section>
+      </section>}
 
       <section className="panel pos-checkout">
-        <div className="panel-head"><div><span className="eyebrow">{activeSale ? 'Comanda abierta' : 'Cobro'}</span><h3>{activeSale ? `Adicional · ${activeSale.numeroComprobante}` : `Carrito (${cart.length})`}</h3></div><ShoppingCart size={20} className="accent-icon" /></div>
+        <div className="panel-head"><div><span className="eyebrow">{activeSale ? 'Comanda abierta' : canOrder ? 'Pedido' : 'Caja'}</span><h3>{activeSale ? `Mesa ${activeSale.mesa?.numero}` : canOrder ? `Carrito (${cart.length})` : 'Selecciona una comanda'}</h3></div><ShoppingCart size={20} className="accent-icon" /></div>
         <div className="cart-list">
-          <label className="open-sale-selector"><span>Venta / mesa</span><select value={activeSaleId} onChange={(event) => selectOpenSale(event.target.value)}><option value="">Nueva venta {selectedMesaId ? `· Mesa ${mesas.find((mesa) => String(mesa.id) === String(selectedMesaId))?.numero || ''}` : '· Mostrador'}</option>{openSales.map((sale) => <option key={sale.id} value={sale.id}>Mesa {sale.mesa?.numero || 'sin mesa'} · {sale.numeroComprobante} · S/ {formatMoney(sale.total)}</option>)}</select></label>
-          {activeSale && <div className="open-sale-summary"><strong>Pedido actual</strong>{(activeSale.detalles || []).map((detail) => <div key={detail.id || detail.producto?.id}><span>{detail.cantidad} × {detail.producto?.nombre || 'Producto'}</span><b>S/ {formatMoney(detail.subtotal)}</b></div>)}</div>}
-          {!cart.length ? <EmptyPos text="Agrega productos para comenzar." /> : cart.map((item) => <div className="cart-item" key={item.id}>
+          <label className="open-sale-selector"><span>Venta / mesa</span><select value={activeSaleId} onChange={(event) => selectOpenSale(event.target.value)}><option value="">Nueva venta {selectedMesaId ? `· Mesa ${mesas.find((mesa) => String(mesa.id) === String(selectedMesaId))?.numero || ''}` : '· Selecciona una mesa'}</option>{openSales.map((sale) => <option key={sale.id} value={sale.id}>Mesa {sale.mesa?.numero || 'sin mesa'} · {sale.numeroComprobante} · S/ {formatMoney(sale.total)}</option>)}</select></label>
+          {activeSale && <div className="open-sale-summary"><strong>Pedido actual</strong>{(activeSale.detalles || []).map(detail => <div key={detail.id} className="sale-item-status">
+            <span>{detail.cantidad} × {detail.producto?.nombre || 'Producto'}<OrderStatus state={detail.estadoPreparacion} /></span>
+            <b>S/ {formatMoney(detail.subtotal)}</b>
+            {canOrder && detail.estadoPreparacion === 'LISTO' && <button type="button" className="secondary-button" disabled={saving} onClick={() => serveItem(detail)}>Entregado</button>}
+          </div>)}</div>}
+          {!cart.length ? (!activeSale && <EmptyPos text={canOrder ? 'Agrega productos para comenzar.' : 'Selecciona una mesa con comanda abierta.'} />) : cart.map((item) => <div className="cart-item" key={item.id}>
             <div className="cart-item-info"><strong>{item.nombre}</strong><small>S/ {formatMoney(item.precioVenta)} c/u · stock {item.stockActual}</small></div>
             <div className="quantity-control"><button type="button" onClick={() => updateQuantity(item.id, -1)}><Minus size={13} /></button><b>{item.cantidad}</b><button type="button" onClick={() => updateQuantity(item.id, 1)}><Plus size={13} /></button></div>
             <button type="button" className="icon-button" onClick={() => removeFromCart(item.id)} title="Quitar producto"><X size={15} /></button>
@@ -340,7 +373,7 @@ export default function SalesPos({ session }) {
         </div>
 
         <div className="checkout-form">
-          {!activeSale && <>
+          {!activeSale && canOrder && <>
           <div className="checkout-section-title"><UserRound size={15} /> Datos del cliente</div>
           <div className="inline-fields">
             <label><span>{isInvoice ? 'RUC' : 'DNI / documento'} *</span><input inputMode="numeric" maxLength={20} value={customer.numeroDocumento} onChange={(event) => updateCustomer('numeroDocumento', event.target.value.replace(/\D/g, ''))} placeholder={isInvoice ? '11 dígitos' : 'DNI del cliente'} /></label>
@@ -352,7 +385,8 @@ export default function SalesPos({ session }) {
             <label><span>Correo</span><input type="email" maxLength={100} value={customer.correo} onChange={(event) => updateCustomer('correo', event.target.value)} /></label>
           </div>
 
-          <div className="checkout-section-title"><FileText size={15} /> Tipo de comprobante</div>
+          <label><span>Fecha de nacimiento (opcional)</span><input type="date" value={customer.fechaNacimiento} onChange={event => updateCustomer('fechaNacimiento', event.target.value)} /></label>
+          <div className="checkout-section-title"><FileText size={15} /> Comprobante solicitado</div>
           <div className="receipt-options" role="group" aria-label="Tipo de comprobante">
             {comprobantes.map((item) => <button type="button" key={item.id} className={`receipt-option ${String(item.id) === String(comprobanteId) ? 'selected' : ''}`} onClick={() => { setComprobanteId(String(item.id)); setError('') }}>
               <FileText size={17} /><span>{receiptLabel(item.nombre)}</span><small>{item.serie}</small>
@@ -360,28 +394,18 @@ export default function SalesPos({ session }) {
           </div>
           {!comprobantes.length && <div className="form-error">No hay comprobantes configurados.</div>}
           </>} {/* Datos de cliente y comprobante */}
-          <div className="inline-fields">
-            <label><span>Método de pago *</span><select value={metodoPago} onChange={(event) => setMetodoPago(event.target.value)}><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option><option value="transferencia">Transferencia</option><option value="yape_plin">Yape / Plin</option></select></label>
-          </div>
-          {metodoPago === 'efectivo' && <label><span>Monto recibido</span><input type="number" min="0" step="0.01" value={amountReceived} onChange={(event) => setAmountReceived(event.target.value)} placeholder={`Mínimo S/ ${formatMoney(total)}`} /></label>}
-
-          <div className="totals"><div><span>Subtotal</span><b>S/ {formatMoney(subtotal)}</b></div><div><span>IGV (18%)</span><b>S/ {formatMoney(igv)}</b></div><div className="total-line"><strong>Total</strong><strong>S/ {formatMoney(total)}</strong></div>{metodoPago === 'efectivo' && <div className="change-line"><span>Vuelto</span><b>S/ {formatMoney(change)}</b></div>}</div>
-          {error && <div className="form-error"><AlertCircle size={15} /> {error}</div>}
-          {notice && <div className="sale-success"><CheckCircle2 size={16} /><span>{notice}</span></div>}
-          {lastSale && <div className="sale-success"><CheckCircle2 size={16} /><span>Venta {lastSale.receiptName} registrada para {lastSale.customerName}.</span><button type="button" className="print-sale-button" onClick={() => window.print()} title={`Imprimir ${receiptLabel(lastSale.receiptName).toLowerCase()}`}><Printer size={15} /> Imprimir comprobante</button></div>}
-          <button type="button" className="primary-button full" onClick={submitSale} disabled={saving || !cart.length}>{saving ? (activeSale ? 'Enviando a cocina...' : 'Abriendo comanda...') : activeSale ? `Enviar adicional S/ ${formatMoney(additionalTotal)}` : `Abrir comanda S/ ${formatMoney(total)}`}</button>
-          {activeSale && <button type="button" className="secondary-button full" onClick={closeSale} disabled={saving}>{saving ? 'Procesando...' : `Cerrar y cobrar S/ ${formatMoney(total)}`}</button>}
+          <div className="totals"><div><span>Subtotal</span><b>S/ {formatMoney(subtotal)}</b></div><div><span>IGV (18%)</span><b>S/ {formatMoney(igv)}</b></div><div className="total-line"><strong>Total</strong><strong>S/ {formatMoney(total)}</strong></div>{activeSale && <div><span>Abonado / Saldo actual</span><b>S/ {formatMoney(activeSale.totalPagado)} / S/ {formatMoney(activeSale.saldoPendiente)}</b></div>}</div>
+          {error && <div className="form-error" role="alert"><AlertCircle size={15} /> {error}</div>}
+          {notice && <div className="sale-success" role="status"><CheckCircle2 size={16} /><span>{notice}</span></div>}
+          {lastOrder && canOrder && <button type="button" className="secondary-button full" onClick={() => printTicket(lastOrder, 'COMANDA')}><Printer size={15} /> Imprimir comanda completa para cocina</button>}
+          {lastSale && canCharge && <div className="sale-success"><CheckCircle2 size={16} /><span>Venta cobrada.</span><button type="button" className="print-sale-button" onClick={() => printTicket(lastSale, 'COMPROBANTE')}><Printer size={15} /> Imprimir comprobante</button></div>}
+          {canOrder && <button type="button" className="primary-button full" onClick={submitSale} disabled={saving || !cart.length || activeSale?.estadoCuenta === 'CERRADA'}>{saving ? 'Guardando pedido...' : activeSale ? `Enviar adicional S/ ${formatMoney(additionalTotal)}` : `Enviar comanda S/ ${formatMoney(total)}`}</button>}
+          {canCharge && activeSale && <button type="button" className="secondary-button full" onClick={() => setPaymentId(activeSale.id)} disabled={saving || cart.length > 0}>Pagos parciales / cerrar cuenta</button>}
         </div>
       </section>
     </div>
-    {lastSale && <section className="print-only receipt-paper">
-      <div className="receipt-header"><strong>{lastSale.company?.razonSocial || 'MI TRAMPITA'}</strong><span>RUC: {lastSale.company?.ruc || '—'}</span><span>{lastSale.company?.direccion || ''}</span><span>{lastSale.company?.telefono || ''}</span></div>
-      <div className="receipt-title"><strong>{receiptLabel(lastSale.receiptName).toUpperCase()}</strong><strong>{lastSale.numeroComprobante || `${lastSale.receiptSeries}-${lastSale.id}`}</strong></div>
-      <div className="receipt-customer"><span>Cliente: {lastSale.customerName}</span><span>Documento: {lastSale.customer?.numeroDocumento || lastSale.cliente?.numeroDocumento || '—'}</span><span>Fecha: {lastSale.fechaVenta ? new Date(lastSale.fechaVenta).toLocaleString('es-PE') : new Date().toLocaleString('es-PE')}</span></div>
-      <table><thead><tr><th>Descripción</th><th>Cant.</th><th>P. unit.</th><th>Total</th></tr></thead><tbody>{(lastSale.detalles || []).map((detail) => <tr key={detail.id || detail.producto?.id}><td>{detail.producto?.nombre || 'Producto'}</td><td>{detail.cantidad}</td><td>S/ {formatMoney(detail.precioUnitario)}</td><td>S/ {formatMoney(detail.subtotal)}</td></tr>)}</tbody></table>
-      <div className="receipt-totals"><span>Subtotal: S/ {formatMoney(lastSale.subtotal)}</span><span>IGV: S/ {formatMoney(lastSale.igv)}</span><strong>Total: S/ {formatMoney(lastSale.total)}</strong></div>
-      <p>Medio de pago: {lastSale.metodoPago || 'efectivo'}</p><p>Gracias por su compra.</p>
-    </section>}
+    <Receipt sale={printDocument} />
+    {paymentId && <UniversalPaymentModal key={paymentId} saleId={paymentId} onClose={() => setPaymentId(null)} onUpdated={paymentUpdated} />}
   </>
 }
 

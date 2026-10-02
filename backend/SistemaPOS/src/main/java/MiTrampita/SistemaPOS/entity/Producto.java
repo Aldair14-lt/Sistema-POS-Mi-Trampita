@@ -18,6 +18,9 @@ public class Producto {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id_producto")
     private Integer id;
+    @Version
+    @Column(nullable = false)
+    private Long version;
     @NotNull
     @ManyToOne(optional = false)
     @JoinColumn(name = "id_categoria", nullable = false)

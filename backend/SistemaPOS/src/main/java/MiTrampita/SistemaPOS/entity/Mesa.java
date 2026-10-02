@@ -8,7 +8,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 @Entity
-@Table(name = "mesa", uniqueConstraints = @UniqueConstraint(name = "uk_mesa_numero", columnNames = "numero_mesa"))
+@Table(name = "mesas", uniqueConstraints = @UniqueConstraint(name = "uk_mesa_numero", columnNames = "numero"))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -16,12 +16,12 @@ import org.hibernate.type.SqlTypes;
 public class Mesa {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_mesa")
+    @Column(name = "id")
     private Integer id;
 
     @NotNull
     @Min(1)
-    @Column(name = "numero_mesa", nullable = false)
+    @Column(name = "numero", nullable = false)
     private Integer numero;
 
     @NotNull
@@ -31,6 +31,11 @@ public class Mesa {
 
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
-    @Column(name = "estado_mesa", nullable = false, length = 20)
+    @Column(name = "estado", nullable = false, length = 20)
     private EstadoMesa estado = EstadoMesa.LIBRE;
+
+    @NotNull
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "area_id", nullable = false)
+    private Area area;
 }

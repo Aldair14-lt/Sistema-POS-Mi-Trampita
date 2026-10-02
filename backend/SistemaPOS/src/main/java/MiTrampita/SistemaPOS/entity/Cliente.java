@@ -5,9 +5,13 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.*;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.PastOrPresent;
+import java.time.LocalDate;
+import java.math.BigDecimal;
 
 @Entity
-@Table(name = "cliente", uniqueConstraints = @UniqueConstraint(name = "uk_cliente_documento", columnNames = "numero_documento"))
+@Table(name = "clientes", uniqueConstraints = @UniqueConstraint(name = "uk_cliente_documento", columnNames = "numero_documento"))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -35,4 +39,16 @@ public class Cliente {
     @Size(max = 100)
     @Column(length = 100)
     private String correo;
+
+    @PastOrPresent(message = "La fecha de nacimiento no puede ser futura")
+    @Column(name = "fecha_nacimiento")
+    private LocalDate fechaNacimiento;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    @Column(name = "frecuencia_visitas", nullable = false)
+    private Long frecuenciaVisitas = 0L;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    @Column(name = "total_gastado", nullable = false, precision = 19, scale = 2)
+    private BigDecimal totalGastado = BigDecimal.ZERO;
 }

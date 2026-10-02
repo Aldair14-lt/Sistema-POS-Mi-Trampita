@@ -14,6 +14,19 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiError> staleUpdate(Exception exception) {
+        return error(HttpStatus.CONFLICT, "El registro cambió mientras lo editabas. Recarga los datos antes de guardar.");
+    }
+    @ExceptionHandler(MiTrampita.SistemaPOS.exception.StockInsuficienteException.class)
+    public ResponseEntity<ApiError> stock(MiTrampita.SistemaPOS.exception.StockInsuficienteException exception) {
+        return error(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler(org.springframework.dao.PessimisticLockingFailureException.class)
+    public ResponseEntity<ApiError> concurrentUpdate(Exception exception) {
+        return error(HttpStatus.CONFLICT, "Otro usuario está actualizando estos datos. Actualiza e inténtalo de nuevo.");
+    }
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> validation(MethodArgumentNotValidException exception) {
         String message = exception.getBindingResult().getFieldErrors().stream()

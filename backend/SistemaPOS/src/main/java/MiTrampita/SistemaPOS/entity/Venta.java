@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "venta", uniqueConstraints = @UniqueConstraint(name = "uk_venta_comprobante", columnNames = {
+@Table(name = "ventas", uniqueConstraints = @UniqueConstraint(name = "uk_venta_comprobante", columnNames = {
         "id_tipo_comprobante", "numero_comprobante" }))
 @Getter
 @Setter
@@ -36,7 +36,7 @@ public class Venta {
     @JoinColumn(name = "id_tipo_comprobante", nullable = false)
     private TipoComprobante tipoComprobante;
     @ManyToOne
-    @JoinColumn(name = "id_mesa")
+    @JoinColumn(name = "mesa_id")
     private Mesa mesa;
     @NotBlank
     @Size(max = 50)
@@ -49,15 +49,34 @@ public class Venta {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal total = BigDecimal.ZERO;
     @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "metodo_pago", nullable = false, length = 20)
     private MetodoPago metodoPago = MetodoPago.efectivo;
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "estado_venta", nullable = false, length = 20)
     private EstadoVenta estado = EstadoVenta.ABIERTA;
-    @Column(name = "fecha_venta", insertable = false, updatable = false)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado_cuenta", nullable = false, length = 25)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    private EstadoCuenta estadoCuenta = EstadoCuenta.ABIERTA;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "origen_pedido", nullable = false, length = 10)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    private OrigenPedido origenPedido = OrigenPedido.LOCAL;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_entrega", nullable = false, length = 10)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    private TipoEntrega tipoEntrega = TipoEntrega.MESA;
+    @Column(name = "direccion_envio", length = 255)
+    private String direccionEnvio;
+    @Column(name = "fecha_venta", nullable = false, updatable = false)
     private OffsetDateTime fechaVenta;
+    @Column(name = "fecha_cobro")
+    private OffsetDateTime fechaCobro;
     @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<DetalleVenta> detalles = new ArrayList<>();
+    @OneToMany(mappedBy = "venta", cascade = CascadeType.PERSIST)
+    @OrderBy("fechaPago ASC, id ASC")
+    private List<PagoVenta> pagos = new ArrayList<>();
 }

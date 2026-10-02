@@ -1,98 +1,58 @@
 package MiTrampita.SistemaPOS.controller;
 
-import MiTrampita.SistemaPOS.entity.MetodoPago;
-import MiTrampita.SistemaPOS.entity.Venta;
+import MiTrampita.SistemaPOS.entity.*;
+import MiTrampita.SistemaPOS.dto.VentaResponse;
+import MiTrampita.SistemaPOS.dto.RegistrarPagoRequest;
+import MiTrampita.SistemaPOS.dto.UpdateItemStatusRequest;
+import MiTrampita.SistemaPOS.dto.KitchenItemResponse;
+import MiTrampita.SistemaPOS.dto.VentaDtos.*;
+import MiTrampita.SistemaPOS.security.PosPrincipal;
 import MiTrampita.SistemaPOS.service.VentaService;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 
-@RestController
-@RequestMapping("/api/ventas")
-@RequiredArgsConstructor
+@RestController @RequestMapping("/api/ventas") @RequiredArgsConstructor
 public class VentaController {
     private final VentaService service;
-
-    @GetMapping
-    public List<Venta> listar() {
-        return service.listar();
-    }
-
+    private final MiTrampita.SistemaPOS.service.KitchenService cocina;
+    @GetMapping public List<VentaResponse> listar() { return service.listar(false).stream().map(VentaResponse::from).toList(); }
+    @GetMapping("/abiertas") public List<VentaResponse> abiertas() { return service.listar(true).stream().map(VentaResponse::from).toList(); }
     @GetMapping("/{id}")
-    public Venta obtener(@PathVariable Integer id) {
-        return service.obtener(id);
+    public VentaResponse obtener(@PathVariable Integer id, @AuthenticationPrincipal PosPrincipal principal) {
+        Venta venta = service.obtener(id);
+        if (venta.getEstado() != EstadoVenta.ABIERTA && !principal.roles().contains("ADMIN") && !principal.roles().contains("CAJA"))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo administración y caja pueden consultar comprobantes");
+        return VentaResponse.from(venta);
     }
-
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Venta registrar(@Valid @RequestBody VentaRequest request) {
-        VentaService.ClienteData client = request.cliente() == null ? null
-                : new VentaService.ClienteData(
-                        request.cliente().numeroDocumento(), request.cliente().nombresRazonSocial(),
-                        request.cliente().direccion(),
-                        request.cliente().telefono(), request.cliente().correo());
-        return service.registrar(request.empresaId(), request.usuarioId(), request.clienteId(), client,
-                request.tipoComprobanteId(), request.numeroComprobante(), request.metodoPago(),
-                request.mesaId(), request.itemVentaList());
+    @PostMapping @ResponseStatus(HttpStatus.CREATED)
+    public VentaResponse registrar(@Valid @RequestBody VentaRequest request, @AuthenticationPrincipal PosPrincipal principal) {
+        return VentaResponse.from(service.registrar(request, principal.id()));
     }
-
     @PatchMapping("/{id}/items")
-    public Venta agregarItems(@PathVariable Integer id, @Valid @RequestBody ActualizarItemsRequest request) {
-        return service.agregarItems(id, request.itemVentaList(), request.metodoPago());
+    public VentaResponse agregarItems(@PathVariable Integer id, @Valid @RequestBody ActualizarItemsRequest request) {
+        return VentaResponse.from(service.agregarItems(id, request.items()));
     }
-
     @PatchMapping("/{id}/cerrar")
-    public Venta cerrar(@PathVariable Integer id, @Valid @RequestBody CerrarVentaRequest request) {
-        return service.cerrar(id, request.metodoPago(), request.montoRecibido());
+    public VentaResponse cerrar(@PathVariable Integer id) {
+        return VentaResponse.from(service.cerrar(id));
+    }
+    @PostMapping("/{id}/pagos") @ResponseStatus(HttpStatus.CREATED)
+    public VentaResponse pagar(@PathVariable Integer id, @Valid @RequestBody RegistrarPagoRequest request,
+            @AuthenticationPrincipal PosPrincipal principal) {
+        return VentaResponse.from(service.registrarPago(id, request, principal.id()));
+    }
+    @GetMapping("/{id}/pagos")
+    public List<VentaResponse.PagoResponse> pagos(@PathVariable Integer id) {
+        return VentaResponse.from(service.obtener(id)).pagos();
+    }
+    @PatchMapping("/items/{id}/servir")
+    public KitchenItemResponse servir(@PathVariable Integer id, @Valid @RequestBody UpdateItemStatusRequest request) {
+        return cocina.actualizar(id, request, true);
     }
 
-    public record VentaRequest(@NotNull(message = "La empresa es obligatoria") Integer empresaId,
-            @NotNull(message = "El usuario es obligatorio") Integer usuarioId,
-            Integer clienteId,
-            @Valid ClienteRequest cliente,
-            @NotNull(message = "El tipo de comprobante es obligatorio") Integer tipoComprobanteId,
-            @NotBlank(message = "El número de comprobante es obligatorio") @Size(max = 50, message = "El número de comprobante no puede superar 50 caracteres") String numeroComprobante,
-            @NotNull(message = "El método de pago es obligatorio") MetodoPago metodoPago,
-            Integer mesaId,
-            @NotEmpty(message = "La venta requiere al menos un producto") @Valid List<ItemRequest> items) {
-        @AssertTrue(message = "Selecciona un cliente o completa sus datos")
-        public boolean tieneCliente() {
-            return clienteId != null || cliente != null;
-        }
-
-        List<VentaService.ItemVenta> itemVentaList() {
-            return items.stream().map(item -> new VentaService.ItemVenta(item.productoId(), item.cantidad())).toList();
-        }
-    }
-
-    public record ClienteRequest(
-            @NotBlank(message = "El documento del cliente es obligatorio") @Size(max = 20, message = "El documento no puede superar 20 caracteres") String numeroDocumento,
-            @NotBlank(message = "El nombre o razón social es obligatorio") @Size(max = 150, message = "El nombre no puede superar 150 caracteres") String nombresRazonSocial,
-            @Size(max = 255, message = "La dirección no puede superar 255 caracteres") String direccion,
-            @Size(max = 20, message = "El teléfono no puede superar 20 caracteres") String telefono,
-            @Email(message = "El correo del cliente no es válido") @Size(max = 100, message = "El correo no puede superar 100 caracteres") String correo) {
-    }
-
-    public record ItemRequest(@NotNull(message = "El producto es obligatorio") Integer productoId,
-            @NotNull(message = "La cantidad es obligatoria") @Min(value = 1, message = "La cantidad debe ser mayor que cero") @Max(value = 100000, message = "La cantidad es demasiado grande") Integer cantidad) {
-    }
-
-    public record ActualizarItemsRequest(
-            @NotEmpty(message = "La comanda requiere al menos un producto") @Valid List<ItemRequest> items,
-            MetodoPago metodoPago) {
-        List<VentaService.ItemVenta> itemVentaList() {
-            return items.stream()
-                    .map(item -> new VentaService.ItemVenta(item.productoId(), item.cantidad()))
-                    .toList();
-        }
-    }
-
-    public record CerrarVentaRequest(
-            @NotNull(message = "El mÃ©todo de pago es obligatorio") MetodoPago metodoPago,
-            @DecimalMin(value = "0.00", message = "El monto recibido no puede ser negativo")
-            java.math.BigDecimal montoRecibido) {
-    }
 }

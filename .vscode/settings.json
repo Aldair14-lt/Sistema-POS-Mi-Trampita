@@ -1,4 +1,7 @@
 {
+    "files.associations": {
+        "pos_postgresql.sql": "plaintext"
+    },
     "java.compile.nullAnalysis.mode": "automatic",
     "java.configuration.updateBuildConfiguration": "interactive"
 }

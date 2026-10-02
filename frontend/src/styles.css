@@ -1439,3 +1439,70 @@ tbody tr:hover { background: #fffaf7; }
   .print-only, .print-only * { visibility: visible !important; }
   .print-only { display: block !important; position: absolute; inset: 0; width: 100%; }
 }
+
+.area-tabs { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 22px 18px; }
+.mesa-atendiendo { background: #eaf1ff; border-color: #a8c3ef; color: #254c86; }
+.mesa-ocupada { background: #fff4dc; border-color: #e6c579; color: #725209; }
+.mesa-libre { background: #effbf3; border-color: #bfe6cd; color: #276847; }
+.mesa-card.selected { outline: 3px solid #334b6d; outline-offset: 2px; }
+.table-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 10px 22px 20px; color: #61718a; font-size: 12px; }
+.table-actions { display: flex; gap: 12px; margin: 0 0 18px; }
+.cashier-layout { grid-template-columns: minmax(0, 900px); justify-content: center; }
+.marketing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.marketing-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.marketing-ranking { padding: 0 22px 22px; }
+.ranking-row { position: relative; display: grid; text-align: left; gap: 8px; padding: 12px 0; width: 100%; border-bottom: 1px solid var(--line); background: transparent; }
+.ranking-row b { font-size: 12px; color: #52677c; }
+.ranking-bar { display: block; height: 5px; background: #537fc9; border-radius: 5px; }
+.roles-field { grid-column: 1 / -1; border: 1px solid var(--line); padding: 16px; border-radius: 10px; }
+.roles-field label { display: inline-flex; align-items: center; margin: 10px 20px 0 0; gap: 8px; }
+.roles-field input { width: 18px; height: 18px; }
+.panel-head select { max-width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+@media (max-width: 900px) { .marketing-grid, .marketing-metrics { grid-template-columns: 1fr; } .panel-head { flex-wrap: wrap; gap: 12px; } }
+
+:root { --kds-ready: #087d59; }
+/* Cocina, recepción y pagos comparten estados legibles y controles táctiles. */
+.kitchen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 20px; align-items: start; }
+.kitchen-ticket { overflow: hidden; min-width: 0; }
+.kitchen-ticket .panel-head { align-items: start; gap: 12px; }
+.ticket-time { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 12px; color: #64748b; }
+.kitchen-items, .payment-history { list-style: none; margin: 0; padding: 0 22px; }
+.kitchen-items li, .payment-history li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 0; border-top: 1px solid #e6ebf2; }
+.kitchen-items li > div, .payment-history li > div { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.kitchen-items strong, .online-customer { overflow-wrap: anywhere; }
+.kitchen-items small, .payment-history small { color: #64748b; font-size: 12px; }
+.kitchen-items button { flex-shrink: 0; min-height: 44px; }
+.order-badge { display: inline-block; width: fit-content; border-radius: 7px; padding: 5px 8px; font-size: 11px; font-weight: 700; line-height: 1.3; background: #edf1f6; color: #475569; }
+.preparation-pendiente, .payment-abierta { background: #fff1dc; color: #8b5410; }
+.preparation-en_preparacion, .payment-pagada_parcialmente { background: #e9f0ff; color: #315baf; }
+.preparation-listo, .payment-cerrada { background: #dbf5e9; color: #086748; }
+.preparation-servido { background: #edf1f6; color: #64748b; }
+.mesa-card .ready-alert { background: #dcf8e8; color: #086748; border-radius: 6px; padding: 5px 7px; font-size: 12px; font-weight: 700; }
+.open-sale-summary .sale-item-status { flex-wrap: wrap; gap: 10px; }
+.sale-item-status > span { display: flex; flex-direction: column; gap: 6px; }
+.payment-modal { max-width: 680px; width: calc(100% - 32px); max-height: 90dvh; overflow-y: auto; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.payment-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0; }
+.payment-summary > div { display: flex; flex-direction: column; gap: 8px; background: #f2f5f9; border-radius: 10px; padding: 14px; color: #64748b; font-size: 12px; }
+.payment-summary strong { font-size: 20px; color: #1d293b; }
+.payment-modal fieldset, .online-order-form fieldset { border: 0; padding: 0; margin: 0 0 18px; min-width: 0; }
+.payment-modal legend, .online-order-form legend { font-weight: 700; margin: 16px 0 12px; color: #334155; }
+.payment-modal label, .online-order-form label { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; font-size: 13px; color: #475569; }
+.payment-modal input, .payment-modal select, .online-order-form input, .online-order-form select { width: 100%; border: 1px solid #dbe3ee; padding: 11px; border-radius: 8px; min-width: 0; background: #fff; color: #1d293b; }
+.payment-modal h3 { margin: 24px 0 10px; }
+.payment-history { padding: 0; }
+.payment-modal .full { margin-top: 14px; }
+.online-customer { display: flex; flex-direction: column; gap: 6px; padding: 0 22px 16px; color: #475569; font-size: 13px; }
+.online-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 18px 22px; font-size: 13px; border-top: 1px solid #e6ebf2; }
+.kitchen-ticket > .full { width: calc(100% - 44px); margin: 0 22px 22px; }
+.online-order-form { padding: 24px; margin-bottom: 24px; }
+.online-order-form .panel-head { padding: 0 0 10px; }
+.online-item-input { display: grid; grid-template-columns: minmax(0, 1fr) 100px auto; gap: 12px; align-items: center; }
+.online-order-form .inline-fields, .payment-modal .inline-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 600px) {
+  .online-item-input { grid-template-columns: minmax(0, 1fr) 80px; }
+  .online-item-input > button { grid-column: 1 / -1; margin-bottom: 14px; }
+  .online-order-form .inline-fields, .payment-modal .inline-fields { grid-template-columns: 1fr; gap: 0; }
+  .payment-summary strong { font-size: 16px; }
+  .payment-summary > div { padding: 10px; }
+}

@@ -5,6 +5,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.Min;
 import lombok.*;
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "detalle_venta")
@@ -31,4 +34,12 @@ public class DetalleVenta {
     private BigDecimal precioUnitario = BigDecimal.ZERO;
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado_preparacion", nullable = false, length = 20)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    private EstadoPreparacion estadoPreparacion = EstadoPreparacion.PENDIENTE;
+    @Column(name = "fecha_pedido", nullable = false, updatable = false)
+    private OffsetDateTime fechaPedido = OffsetDateTime.now();
+    @Column(name = "fecha_estado", nullable = false)
+    private OffsetDateTime fechaEstado = OffsetDateTime.now();
 }

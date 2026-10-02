@@ -17,4 +17,11 @@ public interface VentaRepository extends JpaRepository<Venta, Integer> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select v from Venta v where v.id = :id")
     Optional<Venta> findByIdForUpdate(Integer id);
+
+    @Query("""
+        select v from Venta v where v.origenPedido = MiTrampita.SistemaPOS.entity.OrigenPedido.ONLINE
+          and v.estado = MiTrampita.SistemaPOS.entity.EstadoVenta.ABIERTA
+        order by v.fechaVenta asc, v.id asc
+        """)
+    List<Venta> findOnlineActivos();
 }

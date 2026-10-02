@@ -3,7 +3,9 @@ Un proyecto de sistema POS
 
 ## Inicio rápido
 
-1. Ejecuta PostgreSQL y crea la base `pos_db` usando `database/scripts/01_TablaMiTrampitaPostgreSQL.sql`.
+1. Para una instalación nueva, crea la base `pos_db` en PostgreSQL y ejecuta `database/scripts/pos_postgresql.sql` completo. Para MySQL, ejecuta `database/scripts/pos_mysql.sql` completo. Cada archivo incluye el esquema y todas las migraciones, incluida la sección 05 de cuentas, pedidos online y cocina.
+   No ejecutes el instalador completo sobre una base existente: respáldala y sigue las instrucciones de migración en `docs/IMPLEMENTACION_ESCALAMIENTO.md`.
+   Si ya tiene la migración 04, selecciona y ejecuta únicamente la sección `05. MIGRACIÓN DE BASE EXISTENTE / CUENTAS, ONLINE Y COCINA` hasta el final del archivo de tu motor. Si ya tiene la 05, no repitas la migración. La guía vigente de cuentas, pedidos online, cocina, rutas y permisos es [CUENTAS_ONLINE_KDS.md](docs/CUENTAS_ONLINE_KDS.md).
 2. Inicia el backend desde `backend/SistemaPOS`:
 
    ```powershell
@@ -17,4 +19,4 @@ Un proyecto de sistema POS
    npm run dev
    ```
 
-Abre `http://localhost:5173`. En desarrollo se crea automáticamente el usuario `admin` con contraseña `admin123` y comprobantes base de boleta, factura y nota de venta.
+Abre `http://localhost:5173`. Los scripts SQL precargan estas cuentas iniciales: `admin` / `AdminPOS#2026` (ADMIN), `mozo` / `MozoPOS#2026` (MOZO) y `caja` / `CajaPOS#2026` (CAJA). Las contraseñas se guardan como BCrypt; cámbialas desde **Usuarios** antes de usar el sistema en producción. Los comprobantes base se inicializan al arrancar.

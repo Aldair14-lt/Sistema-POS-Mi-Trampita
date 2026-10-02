@@ -28,6 +28,10 @@ public class DataInitializer implements CommandLineRunner {
     private final RolRepository roles;
     private final UsuarioRolRepository usuarioRoles;
     private final MesaRepository mesas;
+    private final MiTrampita.SistemaPOS.repositorio.AreaRepository areas;
+    private final org.springframework.security.crypto.password.PasswordEncoder passwords;
+    @org.springframework.beans.factory.annotation.Value("${app.bootstrap.password:}")
+    private String bootstrapPassword;
     private final TipoComprobanteRepository comprobantes;
     private final CategoriaRepository categorias;
     private final MarcaRepository marcas;
@@ -42,16 +46,25 @@ public class DataInitializer implements CommandLineRunner {
             return roles.save(role);
         });
 
-        Usuario admin = usuarios.findByUsuarioIgnoreCase("admin").orElseGet(() -> {
-            Usuario user = new Usuario();
-            user.setUsuario("admin");
-            user.setContrasena("admin123");
-            user.setNombreCompleto("Administrador");
-            user.setEstado(EstadoUsuario.activo);
-            return usuarios.save(user);
-        });
-
-        if (!usuarioRoles.existsByUsuario_IdAndRol_Id(admin.getId(), adminRole.getId())) {
+        for (String name : java.util.List.of("MOZO", "CAJA", "COCINERO")) {
+            if (roles.findByNombreIgnoreCase(name).isEmpty()) {
+                Rol role = new Rol();
+                role.setNombre(name);
+                role.setDescripcion(switch (name) {
+                    case "MOZO" -> "Pedidos y comandas";
+                    case "CAJA" -> "Cobros y comprobantes";
+                    default -> "Preparación de pedidos; acceso exclusivo a cocina";
+                });
+                roles.save(role);
+            }
+        }
+        if (usuarios.count() == 0 && !bootstrapPassword.isBlank()) {
+            Usuario admin = new Usuario();
+            admin.setUsuario("admin");
+            admin.setContrasena(passwords.encode(bootstrapPassword));
+            admin.setNombreCompleto("Administrador");
+            admin.setEstado(EstadoUsuario.activo);
+            usuarios.save(admin);
             UsuarioRol relation = new UsuarioRol();
             relation.setUsuario(admin);
             relation.setRol(adminRole);
@@ -95,12 +108,19 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void ensureTables() {
+        var names = java.util.List.of("Sal\u00f3n Principal", "Terraza", "Zona Recreacional", "Piscina");
+        var available = names.stream().map(name -> areas.findByNombreIgnoreCase(name).orElseGet(() -> {
+            var area = new MiTrampita.SistemaPOS.entity.Area();
+            area.setNombre(name);
+            return areas.save(area);
+        })).toList();
         for (int number = 1; number <= 10; number++) {
             final int tableNumber = number;
             if (mesas.findByNumero(tableNumber).isEmpty()) {
                 Mesa mesa = new Mesa();
                 mesa.setNumero(tableNumber);
                 mesa.setCapacidad(4);
+                mesa.setArea(available.get(Math.min((tableNumber - 1) / 3, 3)));
                 mesas.save(mesa);
             }
         }

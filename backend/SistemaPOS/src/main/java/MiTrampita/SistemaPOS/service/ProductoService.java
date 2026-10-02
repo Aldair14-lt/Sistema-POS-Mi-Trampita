@@ -43,6 +43,8 @@ public class ProductoService {
     @Transactional
     public Producto actualizar(Integer id, Producto producto) {
         obtener(id);
+        if (producto.getVersion() == null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Recarga el producto para obtener su versión actual");
         producto.setId(id);
         return guardar(producto);
     }

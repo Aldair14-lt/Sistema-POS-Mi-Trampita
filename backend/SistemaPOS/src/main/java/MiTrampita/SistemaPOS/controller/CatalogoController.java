@@ -73,6 +73,11 @@ public class CatalogoController {
         return actualizar(proveedores, id, value, "Proveedor");
     }
 
+    @GetMapping("/pos/clientes")
+    public List<MiTrampita.SistemaPOS.dto.ClientePosResponse> clientesPos() {
+        return clientes.findAll().stream().map(MiTrampita.SistemaPOS.dto.ClientePosResponse::from).toList();
+    }
+
     @GetMapping("/clientes")
     public List<Cliente> clientes() {
         return clientes.findAll();
@@ -81,27 +86,38 @@ public class CatalogoController {
     @PostMapping("/clientes")
     @ResponseStatus(HttpStatus.CREATED)
     public Cliente crearCliente(@Valid @RequestBody Cliente value) {
+        value.setId(null);
+        value.setFrecuenciaVisitas(0L);
+        value.setTotalGastado(java.math.BigDecimal.ZERO);
         return clientes.save(value);
     }
 
     @PutMapping("/clientes/{id}")
+    @org.springframework.transaction.annotation.Transactional
     public Cliente actualizarCliente(@PathVariable Integer id, @Valid @RequestBody Cliente value) {
-        value.setId(id);
-        return actualizar(clientes, id, value, "Cliente");
+        Cliente current = clientes.findByIdForUpdate(id).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente no encontrado"));
+        current.setNumeroDocumento(value.getNumeroDocumento());
+        current.setNombresRazonSocial(value.getNombresRazonSocial());
+        current.setDireccion(value.getDireccion());
+        current.setTelefono(value.getTelefono());
+        current.setCorreo(value.getCorreo());
+        current.setFechaNacimiento(value.getFechaNacimiento());
+        return current;
     }
 
-    @GetMapping("/empresas")
+    @GetMapping({"/configuracion", "/empresas", "/pos/configuracion"})
     public List<Empresa> empresas() {
         return empresas.findAll();
     }
 
-    @PostMapping("/empresas")
+    @PostMapping({"/configuracion", "/empresas"})
     @ResponseStatus(HttpStatus.CREATED)
     public Empresa crearEmpresa(@Valid @RequestBody Empresa value) {
         return empresas.save(value);
     }
 
-    @PutMapping("/empresas/{id}")
+    @PutMapping({"/configuracion/{id}", "/empresas/{id}"})
     public Empresa actualizarEmpresa(@PathVariable Integer id, @Valid @RequestBody Empresa value) {
         value.setId(id);
         return actualizar(empresas, id, value, "Empresa");
@@ -124,42 +140,9 @@ public class CatalogoController {
         return actualizar(comprobantes, id, value, "Tipo de comprobante");
     }
 
-    @GetMapping("/usuarios")
-    public List<Usuario> usuarios() {
-        return usuarios.findAll();
-    }
-
-    @PostMapping("/usuarios")
-    @ResponseStatus(HttpStatus.CREATED)
-    public Usuario crearUsuario(@Valid @RequestBody Usuario value) {
-        return usuarios.save(value);
-    }
-
-    @PutMapping("/usuarios/{id}")
-    public Usuario actualizarUsuario(@PathVariable Integer id, @RequestBody Usuario value) {
-        Usuario current = usuarios.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        if (value.getContrasena() == null || value.getContrasena().isBlank())
-            value.setContrasena(current.getContrasena());
-        value.setId(id);
-        return usuarios.save(value);
-    }
-
     @GetMapping("/roles")
     public List<Rol> roles() {
         return roles.findAll();
-    }
-
-    @PostMapping("/roles")
-    @ResponseStatus(HttpStatus.CREATED)
-    public Rol crearRol(@Valid @RequestBody Rol value) {
-        return roles.save(value);
-    }
-
-    @PutMapping("/roles/{id}")
-    public Rol actualizarRol(@PathVariable Integer id, @Valid @RequestBody Rol value) {
-        value.setId(id);
-        return actualizar(roles, id, value, "Rol");
     }
 
     @DeleteMapping("/categorias/{id}")
@@ -186,7 +169,7 @@ public class CatalogoController {
         eliminar(clientes, id, "Cliente");
     }
 
-    @DeleteMapping("/empresas/{id}")
+    @DeleteMapping({"/configuracion/{id}", "/empresas/{id}"})
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminarEmpresa(@PathVariable Integer id) {
         eliminar(empresas, id, "Empresa");
@@ -196,18 +179,6 @@ public class CatalogoController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminarComprobante(@PathVariable Integer id) {
         eliminar(comprobantes, id, "Tipo de comprobante");
-    }
-
-    @DeleteMapping("/usuarios/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void eliminarUsuario(@PathVariable Integer id) {
-        eliminar(usuarios, id, "Usuario");
-    }
-
-    @DeleteMapping("/roles/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void eliminarRol(@PathVariable Integer id) {
-        eliminar(roles, id, "Rol");
     }
 
     private void eliminar(org.springframework.data.jpa.repository.JpaRepository<?, Integer> repository, Integer id,
