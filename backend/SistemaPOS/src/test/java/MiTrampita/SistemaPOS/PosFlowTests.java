@@ -87,8 +87,8 @@ class PosFlowTests {
     }
     void entregar(Venta v) {
         for (var item : service.obtener(v.getId()).getDetalles()) {
-            cocina.actualizar(item.getId(), new UpdateItemStatusRequest(EstadoPreparacion.EN_PREPARACION, EstadoPreparacion.PENDIENTE), false);
-            cocina.actualizar(item.getId(), new UpdateItemStatusRequest(EstadoPreparacion.LISTO, EstadoPreparacion.EN_PREPARACION), false);
+            cocina.actualizar(item.getId(), new UpdateItemStatusRequest(EstadoPreparacion.PREPARANDO, EstadoPreparacion.PENDIENTE), false);
+            cocina.actualizar(item.getId(), new UpdateItemStatusRequest(EstadoPreparacion.LISTO, EstadoPreparacion.PREPARANDO), false);
             cocina.actualizar(item.getId(), new UpdateItemStatusRequest(EstadoPreparacion.SERVIDO, EstadoPreparacion.LISTO), true);
         }
     }
@@ -175,7 +175,7 @@ class PosFlowTests {
         mozo = usuarios.findById(mozo.getId()).orElseThrow(); mozo.setEstado(EstadoUsuario.bloqueado); usuarios.save(mozo);
         mvc.perform(get("/api/mesas").session(session)).andExpect(status().isUnauthorized());
         var caja = login(user("CAJA"));
-        mvc.perform(post("/api/ventas").session(caja).with(csrf()).contentType("application/json").content("{}")).andExpect(status().isForbidden());
+        mvc.perform(post("/api/ventas").session(caja).with(csrf()).contentType("application/json").content("{}")).andExpect(status().isBadRequest());
         mvc.perform(patch("/api/ventas/1/items").session(caja).with(csrf()).contentType("application/json").content("{}")).andExpect(status().isForbidden());
         mvc.perform(get("/api/marketing").session(caja)).andExpect(status().isForbidden());
         mvc.perform(get("/api/marketing").session(login(user("ADMIN")))).andExpect(status().isOk());
@@ -223,8 +223,8 @@ class PosFlowTests {
         var f = fixture(10);
         var v = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 2)));
         var id = v.getDetalles().getFirst().getId();
-        cocina.actualizar(id, new UpdateItemStatusRequest(EstadoPreparacion.EN_PREPARACION, EstadoPreparacion.PENDIENTE), false);
-        cocina.actualizar(id, new UpdateItemStatusRequest(EstadoPreparacion.LISTO, EstadoPreparacion.EN_PREPARACION), false);
+        cocina.actualizar(id, new UpdateItemStatusRequest(EstadoPreparacion.PREPARANDO, EstadoPreparacion.PENDIENTE), false);
+        cocina.actualizar(id, new UpdateItemStatusRequest(EstadoPreparacion.LISTO, EstadoPreparacion.PREPARANDO), false);
         var payment = abono("5.00");
         service.registrarPago(v.getId(), payment, f.usuario().getId());
         service.registrarPago(v.getId(), payment, f.usuario().getId());
@@ -324,13 +324,13 @@ class PosFlowTests {
         mvc.perform(patch("/api/cocina/items/" + id + "/estado").session(cook).with(csrf()).contentType("application/json")
                 .content("{\"estado\":\"LISTO\",\"estadoActual\":\"PENDIENTE\"}")).andExpect(status().isConflict());
         mvc.perform(patch("/api/cocina/items/" + id + "/estado").session(cook).with(csrf()).contentType("application/json")
-                .content("{\"estado\":\"EN_PREPARACION\",\"estadoActual\":\"PENDIENTE\"}")).andExpect(status().isOk());
+                .content("{\"estado\":\"PREPARANDO\",\"estadoActual\":\"PENDIENTE\"}")).andExpect(status().isOk());
         mvc.perform(patch("/api/cocina/items/" + id + "/estado").session(cook).with(csrf()).contentType("application/json")
-                .content("{\"estado\":\"SERVIDO\",\"estadoActual\":\"EN_PREPARACION\"}")).andExpect(status().isConflict());
+                .content("{\"estado\":\"SERVIDO\",\"estadoActual\":\"PREPARANDO\"}")).andExpect(status().isConflict());
         mvc.perform(patch("/api/cocina/items/" + id + "/estado").session(cook).with(csrf()).contentType("application/json")
                 .content("{\"estado\":\"LISTO\",\"estadoActual\":\"PENDIENTE\"}")).andExpect(status().isConflict());
         mvc.perform(patch("/api/cocina/items/" + id + "/estado").session(cook).with(csrf()).contentType("application/json")
-                .content("{\"estado\":\"LISTO\",\"estadoActual\":\"EN_PREPARACION\"}")).andExpect(status().isOk());
+                .content("{\"estado\":\"LISTO\",\"estadoActual\":\"PREPARANDO\"}")).andExpect(status().isOk());
         mvc.perform(get("/api/ventas/" + v.getId()).session(mozo)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.detalles[0].estadoPreparacion").value("LISTO"));
         mvc.perform(patch("/api/ventas/items/" + id + "/servir").session(mozo).with(csrf()).contentType("application/json")
@@ -362,4 +362,146 @@ class PosFlowTests {
                     + f.primero().getId() + ",\"cantidad\":1}]}"))
                 .andExpect(status().isBadRequest());
     }
+
+    PagoParcialRequest parcial(String amount, MetodoPago method) {
+        return new PagoParcialRequest(new BigDecimal(amount), method, null, "", UUID.randomUUID().toString());
+    }
+
+    @Test void cobroAtomicoReviertePagoSinEntregaYEmiteUnaSolaBoleta() {
+        var f = fixture(5);
+        var v = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 1)));
+        var typeId = v.getTipoComprobante().getId();
+        long sequenceBefore = comprobantes.findById(typeId).orElseThrow().getUltimoCorrelativo();
+        var request = new CobrarVentaRequest(parcial("11.80", MetodoPago.yape));
+        assertThatThrownBy(() -> service.cobrar(v.getId(), request, f.usuario().getId())).hasMessageContaining("Entrega todos");
+        assertThat(service.obtener(v.getId()).getPagos()).isEmpty();
+        assertThat(comprobantes.findById(typeId).orElseThrow().getUltimoCorrelativo()).isEqualTo(sequenceBefore);
+        entregar(v);
+        var closed = VentaResponse.from(service.cobrar(v.getId(), request, f.usuario().getId()));
+        assertThat(closed.estado()).isEqualTo(EstadoVenta.CERRADA);
+        assertThat(closed.comprobante().numero()).endsWith(String.format("%08d", sequenceBefore + 1));
+        var retry = VentaResponse.from(service.cobrar(v.getId(), request, f.usuario().getId()));
+        assertThat(retry.comprobante().id()).isEqualTo(closed.comprobante().id());
+        assertThat(retry.pagos()).hasSize(1);
+        assertThat(clientes.findById(f.cliente().getId()).orElseThrow().getFrecuenciaVisitas()).isEqualTo(1);
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(4);
+        var product = productos.findById(f.primero().getId()).orElseThrow();
+        product.setNombre("Nombre cambiado"); productos.save(product);
+        var company = empresas.findById(f.empresa().getId()).orElseThrow();
+        company.setRazonSocial("Empresa cambiada"); empresas.save(company);
+        var snapshot = VentaResponse.from(service.obtener(v.getId())).comprobante();
+        assertThat(snapshot.detalles().getFirst().producto()).isEqualTo(f.primero().getNombre());
+        assertThat(snapshot.empresaNombre()).isEqualTo("Prueba");
+    }
+
+    @Test void solicitudCuentaNotificaCajaYAdicionalReabreElConsumo() {
+        var f = fixture(5);
+        var v = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 1)));
+        assertThatThrownBy(() -> service.solicitarCuenta(v.getId())).hasMessageContaining("Entrega todos");
+        entregar(v);
+        service.solicitarCuenta(v.getId());
+        assertThat(service.resumenCaja().mesasPorCobrar()).extracting(VentaResponse::id).contains(v.getId());
+        service.agregarItems(v.getId(), List.of(new ItemRequest(f.primero().getId(), 1)));
+        var updated = service.obtener(v.getId());
+        assertThat(updated.isCuentaSolicitada()).isFalse();
+        assertThat(updated.getFechaSolicitudCuenta()).isNull();
+        assertThat(service.resumenCaja().mesasPorCobrar()).extracting(VentaResponse::id).doesNotContain(v.getId());
+    }
+
+    @Test void cobrosSimultaneosReutilizanComprobanteYCorrelativo() throws Exception {
+        var f = fixture(5);
+        var v = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 1)));
+        entregar(v);
+        var request = new CobrarVentaRequest(parcial("11.80", MetodoPago.plin));
+        long before = comprobantes.findById(v.getTipoComprobante().getId()).orElseThrow().getUltimoCorrelativo();
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var start = new CountDownLatch(1);
+            Callable<Integer> task = () -> { start.await(); return service.cobrar(v.getId(), request, f.usuario().getId()).getComprobante().getId(); };
+            var a = executor.submit(task); var b = executor.submit(task);
+            start.countDown();
+            assertThat(a.get(20, TimeUnit.SECONDS)).isEqualTo(b.get(20, TimeUnit.SECONDS));
+        }
+        assertThat(comprobantes.findById(v.getTipoComprobante().getId()).orElseThrow().getUltimoCorrelativo()).isEqualTo(before + 1);
+        assertThat(service.obtener(v.getId()).getPagos()).hasSize(1);
+    }
+
+    @Test void whatsappPagadoPermaneceEnCocinaYRecepcionHastaDespacho() {
+        var f = fixture(5);
+        var request = new RegistrarPedidoWhatsAppRequest(f.empresa().getId(), f.cliente().getId(), null,
+            comprobantes.findByNombreIgnoreCaseAndSerie("BOLETA", "B001").orElseThrow().getId(),
+            "WA-" + UUID.randomUUID(), TipoEntrega.DELIVERY, "Av. Prueba", "999888777",
+            List.of(new ItemRequest(f.primero().getId(), 1)), parcial("5.00", MetodoPago.yape), false);
+        var v = service.registrar(request.toVenta(), f.usuario().getId());
+        var partial = service.cobrar(v.getId(), new CobrarVentaRequest(parcial("1.00", MetodoPago.plin)), f.usuario().getId());
+        assertThat(partial.getEstado()).isEqualTo(EstadoVenta.ABIERTA);
+        assertThat(partial.getComprobante()).isNull();
+        service.cobrar(v.getId(), new CobrarVentaRequest(parcial("5.80", MetodoPago.yape)), f.usuario().getId());
+        assertThat(service.resumenCaja().pedidosOnline()).extracting(VentaResponse::id).contains(v.getId());
+        assertThat(cocina.cola()).extracting(KitchenItemResponse::ventaId).contains(v.getId());
+        entregar(v);
+        assertThat(service.listarOnline()).extracting(Venta::getId).doesNotContain(v.getId());
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(4);
+    }
+
+    @Test void nuevosContratosYPermisosProtegenCajaYSse() throws Exception {
+        var f = fixture(5);
+        var mozo = login(f.usuario()); var caja = login(user("CAJA")); var cook = login(user("COCINERO"));
+        mvc.perform(get("/api/caja/resumen").session(caja)).andExpect(status().isOk());
+        for (var session : List.of(mozo, cook))
+            mvc.perform(get("/api/caja/resumen").session(session)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/operacion/eventos").session(cook)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/cocina/eventos").session(caja)).andExpect(status().isForbidden());
+        String body = """
+            {"empresaId":%d,"clienteId":%d,"tipoComprobanteId":%d,"numeroComprobante":"WA-%d",
+             "origenPedido":"WHATSAPP","tipoEntrega":"DELIVERY","direccion":"Destino","telefono":"999888777",
+             "items":[{"productoId":%d,"cantidad":1}]}
+            """.formatted(f.empresa().getId(), f.cliente().getId(), comprobantes.findAll().getFirst().getId(),
+                sequence.incrementAndGet(), f.primero().getId());
+        mvc.perform(post("/api/ventas").session(mozo).with(csrf()).contentType("application/json").content(body))
+            .andExpect(status().isForbidden());
+        mvc.perform(post("/api/ventas/whatsapp").session(cook).with(csrf()).contentType("application/json").content(body))
+            .andExpect(status().isForbidden());
+        mvc.perform(post("/api/ventas/whatsapp").session(caja).with(csrf()).contentType("application/json")
+                .content(body.replace("Destino", "")))
+            .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/ventas/whatsapp").session(caja).with(csrf()).contentType("application/json").content(body))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.origenPedido").value("WHATSAPP"))
+            .andExpect(jsonPath("$.telefonoEntrega").value("999888777"));
+    }
+
+    @Test void ventasDistintasEmitenCorrelativosUnicosConcurrentemente() throws Exception {
+        var a = fixture(2); var b = fixture(2);
+        var va = abrir(a, a.mesa(), List.of(new ItemRequest(a.primero().getId(), 1)));
+        var vb = abrir(b, b.mesa(), List.of(new ItemRequest(b.primero().getId(), 1)));
+        entregar(va); entregar(vb);
+        long before = comprobantes.findById(va.getTipoComprobante().getId()).orElseThrow().getUltimoCorrelativo();
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var start = new CountDownLatch(1);
+            var first = executor.submit(() -> { start.await(); return service.cobrar(va.getId(), new CobrarVentaRequest(parcial("11.80", MetodoPago.yape)), a.usuario().getId()).getComprobante().getCorrelativo(); });
+            var second = executor.submit(() -> { start.await(); return service.cobrar(vb.getId(), new CobrarVentaRequest(parcial("11.80", MetodoPago.plin)), b.usuario().getId()).getComprobante().getCorrelativo(); });
+            start.countDown();
+            assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS)))
+                .containsExactlyInAnyOrder(before + 1, before + 2);
+        }
+    }
+
+    @Test void facturaRevalidaClienteAlCobrarYRevierteTodoSiPerdioDatosFiscales() {
+        var f = fixture(2);
+        var cliente = clientes.findById(f.cliente().getId()).orElseThrow();
+        cliente.setNumeroDocumento("20" + cliente.getNumeroDocumento() + "1"); cliente.setDireccion("Dirección fiscal"); clientes.save(cliente);
+        var v = service.registrar(new VentaRequest(f.empresa().getId(), cliente.getId(), null,
+            comprobantes.findByNombreIgnoreCaseAndSerie("FACTURA", "F001").orElseThrow().getId(),
+            "FACT-" + UUID.randomUUID(), f.mesa().getId(), List.of(new ItemRequest(f.primero().getId(), 1))), f.usuario().getId());
+        entregar(v);
+        cliente.setDireccion(""); clientes.save(cliente);
+        assertThatThrownBy(() -> service.cobrar(v.getId(), new CobrarVentaRequest(parcial("11.80", MetodoPago.plin)), f.usuario().getId()))
+            .hasMessageContaining("RUC");
+        var updated = service.obtener(v.getId());
+        assertThat(updated.getPagos()).isEmpty();
+        assertThat(updated.getComprobante()).isNull();
+        assertThat(updated.getEstado()).isEqualTo(EstadoVenta.ABIERTA);
+        assertThat(mesas.findById(f.mesa().getId()).orElseThrow().getEstado()).isEqualTo(EstadoMesa.ATENDIENDO);
+        assertThat(clientes.findById(cliente.getId()).orElseThrow().getFrecuenciaVisitas()).isZero();
+    }
+
 }

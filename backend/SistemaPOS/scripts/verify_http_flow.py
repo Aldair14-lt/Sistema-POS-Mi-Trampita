@@ -10,6 +10,8 @@ import os
 import urllib.error
 import urllib.request
 import uuid
+import concurrent.futures
+import threading
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--url", required=True)
@@ -54,7 +56,7 @@ for role in ("MOZO", "CAJA", "COCINERO"):
 mozo, caja, cook = users["MOZO"], users["CAJA"], users["COCINERO"]
 mozo.call("GET", "/api/marketing", expected=403)
 caja.call("GET", "/api/configuracion", expected=403)
-caja.call("POST", "/api/ventas", {}, expected=403)
+caja.call("POST", "/api/ventas", {}, expected=400)
 
 area = admin.call("POST", "/api/areas", {"nombre": "QA " + suffix, "estado": "ACTIVA"}, expected=201)
 mesa = admin.call("POST", "/api/mesas", {"numero": max(m["numero"] for m in admin.call("GET", "/api/mesas")) + 1,
@@ -89,9 +91,10 @@ mozo.call("PATCH", f"/api/ventas/{sale['id']}/items", {"items": [
 assert all(stock(p) == 3 for p in products)
 sale = mozo.call("PATCH", f"/api/ventas/{sale['id']}/items", {"items": [{"productoId": products[0]["id"], "cantidad": 1}]})
 assert len(sale["detalles"]) == 3 and stock(products[0]) == 2
-for path in ("/api/ventas/abiertas", "/api/pedidos-online", "/api/mesas", "/api/productos", "/api/marketing"):
+for path in ("/api/caja/resumen", "/api/operacion/eventos", "/api/ventas/abiertas", "/api/pedidos-online", "/api/mesas", "/api/productos", "/api/marketing"):
     cook.call("GET", path, expected=403)
 cook.call("POST", f"/api/ventas/{sale['id']}/pagos", {}, expected=403)
+cook.call("POST", f"/api/ventas/{sale['id']}/cobrar", {}, expected=403)
 mozo.call("GET", "/api/cocina/items", expected=403)
 queue = cook.call("GET", "/api/cocina/items")
 assert all("total" not in item and "cliente" not in item for item in queue)
@@ -102,9 +105,9 @@ def deliver(order):
     for item in order["detalles"]:
         path = f"/api/cocina/items/{item['id']}/estado"
         cook.call("PATCH", path, {"estado": "LISTO", "estadoActual": "PENDIENTE"}, expected=409)
-        cook.call("PATCH", path, {"estado": "EN_PREPARACION", "estadoActual": "PENDIENTE"})
+        cook.call("PATCH", path, {"estado": "PREPARANDO", "estadoActual": "PENDIENTE"})
         cook.call("PATCH", path, {"estado": "LISTO", "estadoActual": "PENDIENTE"}, expected=409)
-        cook.call("PATCH", path, {"estado": "LISTO", "estadoActual": "EN_PREPARACION"})
+        cook.call("PATCH", path, {"estado": "LISTO", "estadoActual": "PREPARANDO"})
         ready = caja.call("GET", f"/api/ventas/{order['id']}")
         assert next(d for d in ready["detalles"] if d["id"] == item["id"])["estadoPreparacion"] == "LISTO"
         caja.call("PATCH", f"/api/ventas/items/{item['id']}/servir", {"estado": "SERVIDO", "estadoActual": "LISTO"})
@@ -127,8 +130,14 @@ sale = caja.call("POST", f"/api/ventas/{sale['id']}/pagos", payment(39), expecte
 assert sale["estadoCuenta"] == "CERRADA" and sale["estado"] == "ABIERTA"
 caja.call("PATCH", f"/api/ventas/{sale['id']}/cerrar", {}, expected=409)
 deliver(sale)
+sale = mozo.call("PATCH", f"/api/ventas/{sale['id']}/solicitar-cuenta", {})
+assert sale["cuentaSolicitada"]
+assert any(v["id"] == sale["id"] for v in caja.call("GET", "/api/caja/resumen")["mesasPorCobrar"])
 closed = caja.call("PATCH", f"/api/ventas/{sale['id']}/cerrar", {})
 assert closed["estado"] == "CERRADA" and closed["mesa"]["estado"] == "LIBRE"
+assert closed["comprobante"]["numero"].startswith(receipt["serie"] + "-")
+assert len(closed["comprobante"]["detalles"]) == 3
+assert caja.call("POST", f"/api/ventas/{sale['id']}/cobrar", {})["comprobante"]["id"] == closed["comprobante"]["id"]
 assert stock(products[0]) == 2 and stock(products[1]) == 3
 caja.call("PATCH", f"/api/ventas/{sale['id']}/cerrar", {}, expected=409)
 stats = next(c for c in admin.call("GET", "/api/clientes") if c["id"] == client["id"])
@@ -161,6 +170,54 @@ invalid = {**online, "numeroComprobante": f"QA-INVALID-{suffix}", "items": [{"pr
     "pagoTotal": False, "pagoInicial": payment(12)}
 caja.call("POST", "/api/pedidos-online", invalid, expected=409)
 assert stock(products[0]) == 2
+# SSE: la cocina recibe solo una invalidación tras confirmar la comanda.
+def wait_event(client, path, started):
+    request = urllib.request.Request(args.url + path, headers={"Accept": "text/event-stream"})
+    with client.opener.open(request, timeout=15) as response:
+        assert response.status == 200 and response.headers["Content-Type"].startswith("text/event-stream")
+        started.set()
+        while True:
+            line = response.readline().decode().strip()
+            if line == "event:actualizar":
+                return response.readline().decode().strip()
+
+whatsapp = {"empresaId": company["id"], "clienteId": client["id"], "tipoComprobanteId": receipt["id"],
+    "numeroComprobante": f"WA-{suffix}", "tipoEntrega": "DELIVERY", "direccion": "Destino WhatsApp",
+    "telefono": "999888777", "items": [{"productoId": products[0]["id"], "cantidad": 1}],
+    "pagoInicial": payment(5, "yape"), "pagoTotal": False}
+caja.call("POST", "/api/ventas/whatsapp", {**whatsapp, "telefono": ""}, expected=400)
+caja.call("POST", "/api/ventas/whatsapp", {**whatsapp, "direccion": ""}, expected=400)
+assert stock(products[0]) == 2
+started = threading.Event()
+with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+    stream = executor.submit(wait_event, cook, "/api/cocina/eventos", started)
+    assert started.wait(10), "El stream de cocina no inició"
+    order = caja.call("POST", "/api/ventas/whatsapp", whatsapp, expected=201)
+    assert stream.result(timeout=15) == "data:1"
+assert order["origenPedido"] == "WHATSAPP" and order["telefonoEntrega"] == "999888777"
+assert float(order["saldoPendiente"]) == 6.80 and stock(products[0]) == 1
+mozo.call("POST", "/api/ventas", {**whatsapp, "origenPedido": "WEB"}, expected=403)
+partial = payment(1, "plin")
+order = caja.call("POST", f"/api/ventas/{order['id']}/cobrar", {"pago": partial})
+assert order["estado"] == "ABIERTA" and order["comprobante"] is None
+last_payment = payment(5.80, "yape")
+paid = caja.call("POST", f"/api/ventas/{order['id']}/cobrar", {"pago": last_payment})
+assert paid["estado"] == "CERRADA" and paid["comprobante"]
+retry = caja.call("POST", f"/api/ventas/{order['id']}/cobrar", {"pago": last_payment})
+assert retry["comprobante"]["id"] == paid["comprobante"]["id"] and len(retry["pagos"]) == 3
+assert any(item["ventaId"] == order["id"] for item in cook.call("GET", "/api/cocina/items"))
+assert any(v["id"] == order["id"] for v in caja.call("GET", "/api/caja/resumen")["pedidosOnline"])
+deliver(order)
+assert not any(v["id"] == order["id"] for v in caja.call("GET", "/api/pedidos-online"))
+# La impresión utiliza una fotografía fiscal aunque se edite la empresa.
+company["razonSocial"] = "Empresa editada después de emitir"
+admin.call("PUT", f"/api/configuracion/{company['id']}", company)
+assert caja.call("GET", f"/api/ventas/{order['id']}")["comprobante"]["empresaNombre"] == "Empresa QA " + suffix
+web = {**whatsapp, "numeroComprobante": f"WEB-{suffix}", "origenPedido": "WEB", "tipoEntrega": "RECOJO",
+    "direccion": None, "pagoInicial": None}
+web_order = caja.call("POST", "/api/ventas", web, expected=201)
+assert web_order["origenPedido"] == "WEB" and web_order["estadoCuenta"] == "ABIERTA"
+assert stock(products[0]) == 0
 admin.call("POST", "/api/auth/logout", {}, expected=204)
 admin.call("GET", "/api/mesas", expected=401)
-print("PASS HTTP: sesión/CSRF, roles incluidos cocina, stock al pedir, rollback, abonos, reintentos, cierre, KDS, online flexible y fidelización.")
+print("PASS HTTP: sesión/CSRF, roles incluidos cocina, stock al pedir, rollback, abonos, reintentos, cierre, KDS, online flexible, WhatsApp/Web, boleta inmutable, cobro atómico, SSE y fidelización.")

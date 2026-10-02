@@ -11,7 +11,8 @@ public record VentaResponse(Integer id, Empresa empresa, UsuarioResumen usuario,
         BigDecimal igv, BigDecimal total, MetodoPago metodoPago, EstadoVenta estado,
         OffsetDateTime fechaVenta, OffsetDateTime fechaCobro, List<DetalleResponse> detalles,
         EstadoCuenta estadoCuenta, OrigenPedido origenPedido, TipoEntrega tipoEntrega, String direccionEnvio,
-        BigDecimal totalPagado, BigDecimal saldoPendiente, List<PagoResponse> pagos) {
+        BigDecimal totalPagado, BigDecimal saldoPendiente, List<PagoResponse> pagos,
+        String telefonoEntrega, boolean cuentaSolicitada, OffsetDateTime fechaSolicitudCuenta, ComprobanteResponse comprobante) {
     public static VentaResponse from(Venta v) {
         BigDecimal abonado = v.getPagos().stream().map(PagoVenta::getMonto).reduce(BigDecimal.ZERO, BigDecimal::add);
         return new VentaResponse(v.getId(), v.getEmpresa(),
@@ -26,7 +27,8 @@ public record VentaResponse(Integer id, Empresa empresa, UsuarioResumen usuario,
                 abonado, v.getTotal().subtract(abonado), v.getPagos().stream().map(p -> new PagoResponse(
                     p.getId(), p.getMonto(), p.getMetodoPago(), p.getMontoRecibido(),
                     p.getMontoRecibido().subtract(p.getMonto()), p.getReferencia(), p.getFechaPago(),
-                    p.getUsuario().getNombreCompleto(), p.getClaveOperacion())).toList());
+                    p.getUsuario().getNombreCompleto(), p.getClaveOperacion())).toList(),
+                v.getTelefonoEntrega(), v.isCuentaSolicitada(), v.getFechaSolicitudCuenta(), ComprobanteResponse.from(v.getComprobante()));
     }
     public record UsuarioResumen(Integer id, String usuario, String nombreCompleto) { }
     public record ProductoResumen(Integer id, String nombre) { }

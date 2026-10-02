@@ -7,10 +7,10 @@ export function permissions(session) {
 }
 export function defaultView(session) {
   const rights = permissions(session)
-  return rights.isAdmin ? 'dashboard' : rights.canKitchen ? 'cocina' : 'ventas'
+  return rights.isAdmin ? 'dashboard' : rights.canKitchen ? 'cocina' : rights.canCharge ? 'caja' : 'ventas'
 }
 export function canView(session, view) {
   const rights = permissions(session)
-  return rights.isAdmin || (view === 'ventas' && (rights.canOrder || rights.canCharge)) ||
+  return rights.isAdmin || (view === 'caja' && rights.canCharge) || (view === 'ventas' && (rights.canOrder || rights.canCharge)) ||
     (view === 'cocina' && rights.canKitchen) || (view === 'online' && rights.canOnline)
 }

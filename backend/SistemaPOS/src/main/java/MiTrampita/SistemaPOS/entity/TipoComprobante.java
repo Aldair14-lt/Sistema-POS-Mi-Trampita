@@ -25,6 +25,8 @@ public class TipoComprobante {
     @Size(max = 10)
     @Column(nullable = false, length = 10)
     private String serie;
+    @Column(name = "ultimo_correlativo", nullable = false)
+    private Long ultimoCorrelativo = 0L;
     @Size(max = 255)
     @Column(length = 255)
     private String descripcion;

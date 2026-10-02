@@ -1,5 +1,8 @@
 # Cuentas abiertas, recepción online y cocina
 
+> Esta guía describe la versión 05. El código actual requiere también 06; consulta [Caja, WhatsApp y KDS](CAJA_WHATSAPP_KDS.md). La sección SQL 05 termina antes del encabezado 06.
+
+
 La implementación está en el código del workspace. Requiere el esquema de la migración 04 y luego la migración 05. Se conserva Java 21, React/Vite y la seguridad de sesión con CSRF existente.
 
 ## 1. Migración de datos
@@ -11,7 +14,7 @@ Los únicos dos archivos SQL están consolidados por motor; cada uno incluye el 
 
 Las tablas reales del proyecto son `ventas`, `detalle_venta`, `producto`, `mesas`, `rol` y `usuario_rol`. La migración agrega `ventas.estado_cuenta`, `origen_pedido`, `tipo_entrega`, `direccion_envio`; crea `pagos_venta`; agrega estado y fechas por ítem; inserta los cuatro roles y cambia la restricción que exigía mesa para todos los pedidos abiertos.
 
-Para una base que ya tiene la migración 04, selecciona solo la sección `05. MIGRACIÓN DE BASE EXISTENTE / CUENTAS, ONLINE Y COCINA` hasta el final del archivo correspondiente. No ejecutes el archivo completo sobre una base existente. Detén el backend y respalda la base antes de aplicar la sección. PostgreSQL ejecuta la conversión en una única transacción. MySQL confirma el DDL implícitamente: ante un fallo después del preflight, restaura el respaldo antes de repetir.
+Para una base que ya tiene la migración 04, selecciona solo la sección `05. MIGRACIÓN DE BASE EXISTENTE / CUENTAS, ONLINE Y COCINA` hasta antes del encabezado 06. No ejecutes el archivo completo sobre una base existente. Detén el backend y respalda la base antes de aplicar la sección. PostgreSQL ejecuta la conversión en una única transacción. MySQL confirma el DDL implícitamente: ante un fallo después del preflight, restaura el respaldo antes de repetir.
 
 En ambos motores se comprueba primero el stock necesario para las comandas abiertas de la versión 04. Si falta inventario, la migración se detiene antes de cambiar el esquema. Las comandas abiertas se descuentan una vez; las ventas cerradas reciben un abono histórico y sus ítems se marcan SERVIDO. Se conservan las métricas de fidelización existentes. Una marca de versión impide descontar de nuevo al reejecutar.
 
@@ -24,7 +27,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Falló el respaldo' }
 # Después del respaldo, aplica solo la sección 05 desde pgAdmin, como se indica abajo.
 ```
 
-Para PostgreSQL, abre `database/scripts/pos_postgresql.sql` en pgAdmin/Query Tool conectado a la base del POS y ejecuta únicamente la sección 05 hasta el final. Para MySQL, selecciona la base del POS en Workbench, abre `database/scripts/pos_mysql.sql` y ejecuta únicamente esa misma sección 05. Si la base aún usa `venta` y `mesa`, primero aplica las secciones pendientes 03/04 de `IMPLEMENTACION_ESCALAMIENTO.md`. Para instalaciones nuevas, ejecuta completo el único archivo de tu motor; ya incluye la sección 05.
+Para PostgreSQL, abre `database/scripts/pos_postgresql.sql` en pgAdmin/Query Tool conectado a la base del POS y ejecuta únicamente la sección 05 hasta antes del encabezado 06. Para MySQL, selecciona la base del POS en Workbench, abre `database/scripts/pos_mysql.sql` y ejecuta únicamente esa misma sección 05. Si la base aún usa `venta` y `mesa`, primero aplica las secciones pendientes 03/04 de `IMPLEMENTACION_ESCALAMIENTO.md`. Para instalaciones nuevas, ejecuta completo el único archivo de tu motor; ya incluye la sección 05.
 
 Se mantiene `spring.jpa.hibernate.ddl-auto=validate`. No iniciar el backend nuevo sobre una base que no tenga 05.
 

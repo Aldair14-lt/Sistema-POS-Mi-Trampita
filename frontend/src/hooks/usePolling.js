@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import useOperationEvents from './useOperationEvents'
 import { api } from '../api'
 
 /** Consulta serial por intervalo. Una respuesta vieja nunca reemplaza una actualización nueva. */
@@ -31,5 +32,6 @@ export default function usePolling(path, interval = 5000) {
     poll()
     return () => { stopped = true; clearTimeout(timer); sequence.current++ }
   }, [refresh, interval])
+  useOperationEvents(refresh, path.startsWith('/api/cocina/'))
   return { data, error, loading, refresh }
 }

@@ -1,7 +1,7 @@
 package MiTrampita.SistemaPOS.service;
 
 import MiTrampita.SistemaPOS.dto.VentaDtos.*;
-import MiTrampita.SistemaPOS.dto.PedidoOnlineRequest;
+import MiTrampita.SistemaPOS.dto.*;
 import MiTrampita.SistemaPOS.dto.RegistrarPagoRequest;
 import MiTrampita.SistemaPOS.entity.*;
 import MiTrampita.SistemaPOS.exception.StockInsuficienteException;
@@ -29,6 +29,8 @@ public class VentaService {
     private final MesaRepository mesas;
     private final MesaService mesaService;
     private final PagoVentaRepository pagos;
+    private final ComprobanteRepository documentos;
+    private final OperationEvents events;
 
     @Transactional(readOnly = true)
     public List<Venta> listar(boolean abiertas) {
@@ -54,16 +56,25 @@ public class VentaService {
     private void cargarCuenta(Venta venta) {
         venta.getDetalles().size();
         venta.getPagos().size();
+        if (venta.getComprobante() != null) venta.getComprobante().getDetalles().size();
     }
 
     @Transactional
     public Venta registrar(VentaRequest request, Integer usuarioId) {
-        if (request.mesaId() == null) throw bad("Faltan datos de la mesa");
-        Mesa mesa = mesaService.bloquearParaAbrir(request.mesaId());
-        if (mesa.getEstado() == EstadoMesa.ATENDIENDO || ventas.existsByMesa_IdAndEstado(mesa.getId(), EstadoVenta.ABIERTA))
-            throw conflict("La mesa ya tiene una comanda abierta. Actualiza el salón");
+        OrigenPedido origen = request.origenPedido() == null ? OrigenPedido.LOCAL : request.origenPedido();
+        if (!request.isEntregaValida()) throw bad("Datos de mesa o entrega incompletos");
+        Mesa mesa = null;
+        if (origen == OrigenPedido.LOCAL) {
+            mesa = mesaService.bloquearParaAbrir(request.mesaId());
+            if (mesa.getEstado() == EstadoMesa.ATENDIENDO || ventas.existsByMesa_IdAndEstado(mesa.getId(), EstadoVenta.ABIERTA))
+                throw conflict("La mesa ya tiene una comanda abierta. Actualiza el salón");
+        }
         Venta venta = new Venta();
         venta.setMesa(mesa);
+        venta.setOrigenPedido(origen);
+        venta.setTipoEntrega(origen == OrigenPedido.LOCAL ? TipoEntrega.MESA : request.tipoEntrega());
+        venta.setDireccionEnvio(request.tipoEntrega() == TipoEntrega.DELIVERY ? request.direccion().trim() : null);
+        venta.setTelefonoEntrega(request.telefono() == null ? null : request.telefono().trim());
         venta.setEmpresa(empresas.findById(request.empresaId()).orElseThrow(() -> missing("Configuración fiscal")));
         var usuario = usuarios.findById(usuarioId).orElseThrow(() -> missing("Usuario"));
         if (usuario.getEstado() != EstadoUsuario.activo) throw bad("Usuario inactivo");
@@ -74,8 +85,13 @@ public class VentaService {
         venta.setNumeroComprobante(request.numeroComprobante().trim());
         venta.setFechaVenta(OffsetDateTime.now());
         agregarLineas(venta, request.items());
-        mesa.setEstado(EstadoMesa.ATENDIENDO);
-        return ventas.save(venta);
+        if (mesa != null) mesa.setEstado(EstadoMesa.ATENDIENDO);
+        ventas.saveAndFlush(venta);
+        if (Boolean.TRUE.equals(request.pagoTotal()) && (request.pagoInicial() == null ||
+                request.pagoInicial().monto().compareTo(venta.getTotal()) != 0))
+            throw bad("El pago total debe coincidir con el importe vigente del pedido");
+        if (request.pagoInicial() != null) registrarAbono(venta, request.pagoInicial().toPago(), usuarioId);
+        return venta;
     }
 
     @Transactional
@@ -94,6 +110,7 @@ public class VentaService {
         venta.setNumeroComprobante(request.numeroComprobante().trim());
         venta.setFechaVenta(OffsetDateTime.now());
         venta.setOrigenPedido(OrigenPedido.ONLINE);
+        venta.setTelefonoEntrega(venta.getCliente().getTelefono());
         venta.setTipoEntrega(request.tipoEntrega());
         venta.setDireccionEnvio(request.tipoEntrega() == TipoEntrega.DELIVERY ? request.direccionEnvio().trim() : null);
         agregarLineas(venta, request.items());
@@ -141,32 +158,113 @@ public class VentaService {
         venta.setIgv(igv);
         venta.setTotal(subtotal.add(igv).setScale(2, RoundingMode.HALF_UP));
         recalcularCuenta(venta);
+        venta.setCuentaSolicitada(false);
+        venta.setFechaSolicitudCuenta(null);
+        events.changed(true);
     }
 
-    /**
-     * El cierre no genera cobros ni descuenta stock: solo valida el libro de pagos.
-     * Venta -> mesa -> cliente impide liberar dos veces y duplicar fidelización.
-     */
+    @Transactional
+    public Venta solicitarCuenta(Integer id) {
+        Venta venta = ventas.findByIdForUpdate(id).orElseThrow(() -> missing("Venta"));
+        validarAbierta(venta);
+        if (venta.getMesa() == null) throw conflict("Solo las mesas solicitan cuenta");
+        validarEntrega(venta);
+        venta.setCuentaSolicitada(true);
+        if (venta.getFechaSolicitudCuenta() == null) venta.setFechaSolicitudCuenta(OffsetDateTime.now());
+        cargarCuenta(venta);
+        events.changed(false);
+        return venta;
+    }
+
     @Transactional
     public Venta cerrar(Integer id) {
         Venta venta = ventas.findByIdForUpdate(id).orElseThrow(() -> missing("Venta"));
         validarAbierta(venta);
+        if (totalPagado(venta).compareTo(venta.getTotal()) != 0)
+            throw conflict("Los pagos deben cubrir exactamente el total antes de cerrar");
+        validarEntrega(venta);
+        finalizar(venta);
+        cargarCuenta(venta);
+        return venta;
+    }
+
+    /** Pago, cierre, fidelización y numeración forman una única unidad atómica. */
+    @Transactional
+    public Venta cobrar(Integer id, CobrarVentaRequest request, Integer usuarioId) {
+        Venta venta = ventas.findByIdForUpdate(id).orElseThrow(() -> missing("Venta"));
+        if (request.pago() != null) registrarAbono(venta, request.pago().toPago(), usuarioId);
+        if (venta.getEstado() == EstadoVenta.CERRADA) {
+            if (venta.getComprobante() == null) throw conflict("La venta histórica ya está cerrada");
+            cargarCuenta(venta);
+            return venta; // Reintento confirmado: ni otro pago ni otro correlativo.
+        }
+        validarAbierta(venta);
+        if (totalPagado(venta).compareTo(venta.getTotal()) == 0) {
+            if (venta.getMesa() != null) validarEntrega(venta);
+            finalizar(venta);
+        } else if (request.pago() == null) throw conflict("Todavía existe saldo pendiente");
+        cargarCuenta(venta);
+        return venta;
+    }
+
+    private void validarEntrega(Venta venta) {
+        if (venta.getDetalles().isEmpty()) throw bad("La comanda no tiene productos");
+        if (venta.getDetalles().stream().anyMatch(d -> d.getEstadoPreparacion() != EstadoPreparacion.SERVIDO))
+            throw conflict("Entrega todos los productos antes de finalizar la mesa");
+    }
+
+    private void finalizar(Venta venta) {
         recalcularCuenta(venta);
         if (totalPagado(venta).compareTo(venta.getTotal()) != 0)
             throw conflict("Los pagos deben cubrir exactamente el total antes de cerrar");
         if (venta.getDetalles().isEmpty()) throw bad("La comanda no tiene productos");
-        if (venta.getDetalles().stream().anyMatch(d -> d.getEstadoPreparacion() != EstadoPreparacion.SERVIDO))
-            throw conflict("Entrega todos los productos antes de cerrar la comanda");
         Mesa mesa = venta.getMesa() == null ? null : mesas.findByIdForUpdate(venta.getMesa().getId()).orElseThrow(() -> missing("Mesa"));
         Cliente cliente = clientes.findByIdForUpdate(venta.getCliente().getId()).orElseThrow(() -> missing("Cliente"));
         entityManager.refresh(cliente, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        venta.setCliente(cliente);
+        validarCliente(venta); // Revalidar la ficha fiscal vigente antes de emitir.
         cliente.setFrecuenciaVisitas(Math.addExact(cliente.getFrecuenciaVisitas(), 1L));
         cliente.setTotalGastado(cliente.getTotalGastado().add(venta.getTotal()));
-        venta.setCliente(cliente);
         venta.setEstado(EstadoVenta.CERRADA);
         venta.setFechaCobro(OffsetDateTime.now());
+        emitirComprobante(venta);
         if (mesa != null) mesa.setEstado(EstadoMesa.LIBRE);
-        return venta;
+        events.changed(false);
+    }
+
+    private void emitirComprobante(Venta venta) {
+        if (venta.getComprobante() != null) return;
+        TipoComprobante tipo = comprobantes.findByIdForUpdate(venta.getTipoComprobante().getId()).orElseThrow(() -> missing("Comprobante"));
+        entityManager.refresh(tipo, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        long numero = Math.addExact(tipo.getUltimoCorrelativo(), 1L);
+        tipo.setUltimoCorrelativo(numero);
+        var c = new Comprobante();
+        c.setVenta(venta); c.setTipoComprobante(tipo); c.setTipo(tipo.getNombre());
+        c.setSerie(tipo.getSerie()); c.setCorrelativo(numero);
+        c.setEmpresaRuc(venta.getEmpresa().getRuc()); c.setEmpresaNombre(venta.getEmpresa().getRazonSocial());
+        c.setEmpresaDireccion(venta.getEmpresa().getDireccion());
+        c.setClienteDocumento(venta.getCliente().getNumeroDocumento()); c.setClienteNombre(venta.getCliente().getNombresRazonSocial());
+        c.setClienteDireccion(venta.getCliente().getDireccion()); c.setFechaEmision(venta.getFechaCobro());
+        c.setSubtotal(venta.getSubtotal()); c.setIgv(venta.getIgv()); c.setTotal(venta.getTotal());
+        venta.getDetalles().forEach(item -> {
+            var d = new DetalleComprobante();
+            d.setComprobante(c); d.setProducto(item.getProducto().getNombre()); d.setCantidad(item.getCantidad());
+            d.setPrecioUnitario(item.getPrecioUnitario()); d.setSubtotal(item.getSubtotal()); c.getDetalles().add(d);
+        });
+        documentos.saveAndFlush(c);
+        venta.setComprobante(c);
+    }
+
+    @Transactional(readOnly = true)
+    public CajaResponse resumenCaja() {
+        var abiertas = listar(true);
+        var locales = abiertas.stream().filter(v -> v.getOrigenPedido() == OrigenPedido.LOCAL).toList();
+        var recientes = ventas.findTop20ByEstadoOrderByFechaCobroDesc(EstadoVenta.CERRADA);
+        recientes.forEach(this::cargarCuenta);
+        return new CajaResponse(locales.stream().filter(Venta::isCuentaSolicitada).sorted(Comparator.comparing(Venta::getFechaSolicitudCuenta)).map(VentaResponse::from).toList(),
+            locales.stream().filter(v -> !v.isCuentaSolicitada()).map(VentaResponse::from).toList(),
+            listarOnline().stream().map(VentaResponse::from).toList(),
+            recientes.stream().map(VentaResponse::from).toList());
     }
 
     @Transactional
@@ -207,6 +305,7 @@ public class VentaService {
         venta.getPagos().add(pago);
         venta.setMetodoPago(request.metodoPago()); // Compatibilidad con el comprobante anterior; el libro conserva todos los métodos.
         recalcularCuenta(venta);
+        events.changed(false);
     }
 
     private BigDecimal totalPagado(Venta venta) {

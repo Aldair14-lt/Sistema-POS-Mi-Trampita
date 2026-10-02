@@ -1,0 +1,360 @@
+/* Caja, recepción y modal de cobro; adaptación a pantallas pequeñas. */
+.cashier-heading h1 {
+  font-size: 30px;
+  letter-spacing: -1px;
+}
+
+.cashier-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: -8px 0 20px;
+}
+
+.cashier-metrics {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 17px;
+  margin-bottom: 25px;
+}
+
+.cashier-metrics>div {
+  background: white;
+  border: 1px solid #e6eae8;
+  border-radius: 17px;
+  padding: 22px;
+}
+
+.cashier-metrics span,.cashier-metrics small {
+  display: block;
+  font-size: 11px;
+  color: #7a8982;
+}
+
+.cashier-metrics strong {
+  display: block;
+  font-size: 29px;
+  letter-spacing: -.7px;
+  color: #28473b;
+  margin: 11px 0;
+}
+
+.cashier-columns {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 24px;
+  align-items: start;
+}
+
+.cashier-column {
+  background: #f6f4eb;
+  border: 1px solid #e8e3cd;
+  border-radius: 21px;
+  padding: 19px;
+}
+
+.cashier-column.online {
+  background: #f0f4f8;
+  border-color: #dfe6ee;
+}
+
+.cashier-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2px 1px 21px;
+  color: #7b682f;
+}
+
+.cashier-column.online .cashier-column-head {
+  color: #3d6485;
+}
+
+.cashier-column-head span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cashier-column-head b {
+  background: #fff8;
+  padding: 6px 10px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.cashier-card {
+  background: white;
+  border: 1px solid #e7e7e0;
+  box-shadow: 0 4px 12px #1c332505;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 15px;
+}
+
+.cashier-card:last-child {
+  margin-bottom: 0;
+}
+
+.cashier-card header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cashier-card h3 {
+  font-size: 22px;
+  margin: 7px 0;
+  letter-spacing: -.6px;
+  color: #243c30;
+}
+
+.cashier-card .eyebrow {
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+
+.cashier-card header p {
+  font-size: 11px;
+  color: #829088;
+  margin: 0;
+}
+
+.cashier-delivery {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #60716a;
+  margin: 14px 0;
+  overflow-wrap: anywhere;
+}
+
+.cashier-items {
+  list-style: none;
+  padding: 0;
+  margin: 18px 0 0;
+}
+
+.cashier-items li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 0;
+  border-top: 1px solid #f0f2ef;
+}
+
+.cashier-items li>div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.cashier-items strong {
+  font-size: 12px;
+}
+
+.cashier-items .secondary-button {
+  font-size: 11px;
+  padding: 8px;
+}
+
+.cashier-card-total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #75847c;
+  background: #f7f9f6;
+  border-radius: 10px;
+  padding: 13px;
+  margin: 12px 0;
+}
+
+.cashier-card-total b,.cashier-card-total strong {
+  display: block;
+  margin-top: 5px;
+  color: #2e473b;
+  font-size: 16px;
+}
+
+.cashier-card>.secondary-button {
+  margin-top: 9px;
+}
+
+.cashier-empty {
+  text-align: center;
+  padding: 35px 15px 45px;
+  color: #919689;
+}
+
+.cashier-empty p {
+  color: #6c776d;
+  font-size: 13px;
+}
+
+.cashier-empty small {
+  font-size: 11px;
+  line-height: 1.7;
+  display: block;
+}
+
+.cashier-other-tables {
+  margin-top: 22px;
+  border-top: 1px solid #e3dfcd;
+  padding-top: 15px;
+}
+
+.cashier-other-tables summary {
+  font-size: 12px;
+  color: #7b714c;
+  padding-bottom: 15px;
+  cursor: pointer;
+}
+
+.cashier-receipts {
+  background: white;
+  border: 1px solid #e7ebe8;
+  border-radius: 19px;
+  padding: 22px;
+  margin-top: 24px;
+}
+
+.cashier-receipts h2 {
+  font-size: 17px;
+  margin: 0 0 15px;
+}
+
+.cashier-receipts>div {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 0;
+  border-top: 1px solid #f0f2ef;
+}
+
+.cashier-receipts>div>span {
+  flex: 1;
+}
+
+.cashier-receipts strong {
+  font-size: 12px;
+}
+
+.cashier-receipts small {
+  display: block;
+  color: #819088;
+  font-size: 11px;
+  margin-top: 5px;
+}
+
+.cashier-receipts b {
+  font-size: 13px;
+}
+
+.payment-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 17px;
+}
+
+.payment-modes button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 13px;
+  border: 1px solid #dbe4de;
+  background: #f9fbf9;
+  color: #64756b;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.payment-modes button[aria-pressed=true] {
+  background: #e6f5e9;
+  border-color: #7fba91;
+  color: #2b6940;
+}
+
+.payment-change {
+  font-size: 11px;
+  color: #7f8b82;
+  margin: auto 0;
+}
+
+.payment-change strong {
+  display: block;
+  font-size: 20px;
+  color: #315840;
+  margin-top: 6px;
+}
+
+.preparation-preparando {
+  background: #e7effb;
+  color: #365d99;
+}
+
+.online-order-form {
+  margin-bottom: 24px;
+}
+
+.online-order-form form {
+  padding: 0 22px 22px;
+}
+
+.online-order-form input:read-only {
+  background: #f3f5f3;
+  color: #728077;
+}
+
+@media(max-width:1000px) {
+  .cashier-heading {
+    align-items: flex-start;
+    gap: 15px;
+  }
+  .cashier-heading h1 {
+    font-size: 25px;
+  }
+  .cashier-columns {
+    gap: 16px;
+  }
+  .cashier-column {
+    padding: 14px;
+  }
+  .cashier-card {
+    padding: 15px;
+  }
+  .cashier-card header {
+    flex-wrap: wrap;
+  }
+}
+
+@media(max-width:700px) {
+  .cashier-columns,.cashier-metrics {
+    grid-template-columns: 1fr;
+  }
+  .cashier-metrics {
+    gap: 10px;
+  }
+  .cashier-metrics>div {
+    padding: 15px;
+  }
+  .cashier-metrics strong {
+    font-size: 24px;
+  }
+  .cashier-heading {
+    flex-direction: column;
+  }
+  .cashier-toolbar {
+    justify-content: flex-start;
+    margin-top: 10px;
+  }
+}
+

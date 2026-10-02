@@ -131,13 +131,23 @@ public class CatalogoController {
     @PostMapping("/tipos-comprobante")
     @ResponseStatus(HttpStatus.CREATED)
     public TipoComprobante crearComprobante(@Valid @RequestBody TipoComprobante value) {
+        value.setId(null);
+        value.setUltimoCorrelativo(0L);
         return comprobantes.save(value);
     }
 
     @PutMapping("/tipos-comprobante/{id}")
+    @org.springframework.transaction.annotation.Transactional
     public TipoComprobante actualizarComprobante(@PathVariable Integer id, @Valid @RequestBody TipoComprobante value) {
-        value.setId(id);
-        return actualizar(comprobantes, id, value, "Tipo de comprobante");
+        var current = comprobantes.findByIdForUpdate(id).orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "Tipo de comprobante no encontrado"));
+        if (current.getUltimoCorrelativo() > 0 &&
+                (!current.getSerie().equals(value.getSerie()) || !current.getNombre().equals(value.getNombre())))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Una serie emitida no se puede modificar; crea otra");
+        current.setNombre(value.getNombre());
+        current.setSerie(value.getSerie());
+        current.setDescripcion(value.getDescripcion());
+        return current;
     }
 
     @GetMapping("/roles")

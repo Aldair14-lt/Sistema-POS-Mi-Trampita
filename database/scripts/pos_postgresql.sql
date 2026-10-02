@@ -300,3 +300,72 @@ ON CONFLICT(nombre_rol) DO NOTHING;
 INSERT INTO pos_migraciones(version) VALUES('05_cuentas_online_cocina');
 COMMIT;
 -- Crear/asignar el usuario cocinero desde Usuarios; no se incluye una contraseña compartida.
+
+-- 06. MIGRACIÓN DE BASE EXISTENTE / CAJA, WHATSAPP Y COMPROBANTES.
+-- Aplicar solo esta sección si 05 ya está instalada; backend detenido y respaldo.
+-- No modifica stock, pagos históricos ni números de comprobantes existentes.
+BEGIN;
+DO $$ BEGIN
+  IF EXISTS(SELECT 1 FROM pos_migraciones WHERE version='06_caja_whatsapp_comprobantes') THEN
+    RAISE EXCEPTION 'La migración 06 ya fue aplicada';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='05_cuentas_online_cocina') THEN
+    RAISE EXCEPTION 'Primero aplica la migración 05';
+  END IF;
+END $$;
+LOCK TABLE ventas, detalle_venta, tipo_comprobante, pagos_venta IN ACCESS EXCLUSIVE MODE;
+ALTER TABLE ventas DROP CONSTRAINT ck_pedido_origen;
+ALTER TABLE ventas DROP CONSTRAINT ck_pedido_entrega;
+ALTER TABLE ventas DROP CONSTRAINT ck_venta_metodo_pago;
+ALTER TABLE pagos_venta DROP CONSTRAINT ck_pago_metodo;
+ALTER TABLE detalle_venta DROP CONSTRAINT ck_detalle_preparacion;
+ALTER TABLE ventas
+  ADD COLUMN telefono_entrega VARCHAR(20),
+  ADD COLUMN cuenta_solicitada BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN fecha_solicitud_cuenta TIMESTAMPTZ,
+  ADD CONSTRAINT ck_pedido_origen CHECK(origen_pedido IN('LOCAL','ONLINE','WHATSAPP','WEB')),
+  ADD CONSTRAINT ck_venta_metodo_pago CHECK(metodo_pago IN('efectivo','tarjeta','transferencia','yape_plin','yape','plin')),
+  ADD CONSTRAINT ck_pedido_entrega CHECK(
+    (origen_pedido='LOCAL' AND tipo_entrega='MESA' AND direccion_envio IS NULL AND (estado_venta<>'ABIERTA' OR mesa_id IS NOT NULL)) OR
+    (origen_pedido<>'LOCAL' AND mesa_id IS NULL AND (tipo_entrega='RECOJO' OR
+      (tipo_entrega='DELIVERY' AND direccion_envio IS NOT NULL AND length(trim(direccion_envio))>0)))),
+  ADD CONSTRAINT ck_pedido_telefono CHECK(origen_pedido NOT IN('WHATSAPP','WEB') OR
+    (telefono_entrega IS NOT NULL AND telefono_entrega ~ '^[+0-9 ()-]{6,20}$')),
+  ADD CONSTRAINT ck_cuenta_solicitada CHECK(NOT cuenta_solicitada OR (mesa_id IS NOT NULL AND fecha_solicitud_cuenta IS NOT NULL));
+ALTER TABLE pagos_venta ADD CONSTRAINT ck_pago_metodo CHECK(metodo_pago IN('efectivo','tarjeta','transferencia','yape_plin','yape','plin'));
+UPDATE detalle_venta SET estado_preparacion='PREPARANDO' WHERE estado_preparacion='EN_PREPARACION';
+ALTER TABLE detalle_venta ADD CONSTRAINT ck_detalle_preparacion CHECK(estado_preparacion IN('PENDIENTE','PREPARANDO','LISTO','SERVIDO'));
+UPDATE ventas v SET telefono_entrega=c.telefono FROM clientes c WHERE c.id_cliente=v.id_cliente AND v.origen_pedido='ONLINE';
+ALTER TABLE tipo_comprobante ADD COLUMN ultimo_correlativo BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE tipo_comprobante ADD CONSTRAINT ck_comprobante_correlativo CHECK(ultimo_correlativo>=0);
+-- Reservar los correlativos históricos convencionales SERIE-NÚMERO sin renumerarlos.
+UPDATE tipo_comprobante t SET ultimo_correlativo=COALESCE((
+ SELECT MAX(substring(v.numero_comprobante FROM length(t.serie)+2)::BIGINT)
+ FROM ventas v WHERE v.id_tipo_comprobante=t.id_tipo_comprobante
+ AND left(v.numero_comprobante,length(t.serie)+1)=t.serie||'-'
+ AND substring(v.numero_comprobante FROM length(t.serie)+2) ~ '^[0-9]{1,18}$'
+),0);
+CREATE TABLE comprobantes(
+ id_comprobante SERIAL PRIMARY KEY, id_venta INT NOT NULL REFERENCES ventas(id_venta),
+ id_tipo_comprobante INT NOT NULL REFERENCES tipo_comprobante(id_tipo_comprobante),
+ tipo VARCHAR(50) NOT NULL, serie VARCHAR(10) NOT NULL, correlativo BIGINT NOT NULL,
+ empresa_ruc VARCHAR(20) NOT NULL, empresa_nombre VARCHAR(150) NOT NULL, empresa_direccion TEXT NOT NULL,
+ cliente_documento VARCHAR(20) NOT NULL, cliente_nombre VARCHAR(150) NOT NULL, cliente_direccion VARCHAR(255),
+ subtotal NUMERIC(10,2) NOT NULL, igv NUMERIC(10,2) NOT NULL, total NUMERIC(10,2) NOT NULL,
+ fecha_emision TIMESTAMPTZ NOT NULL,
+ CONSTRAINT uk_comprobante_venta UNIQUE(id_venta),
+ CONSTRAINT uk_comprobante_numero UNIQUE(id_tipo_comprobante,correlativo),
+ CONSTRAINT ck_comprobante_importe CHECK(correlativo>0 AND subtotal>=0 AND igv>=0 AND total=subtotal+igv)
+);
+CREATE TABLE detalle_comprobante(
+ id_detalle_comprobante SERIAL PRIMARY KEY, id_comprobante INT NOT NULL REFERENCES comprobantes(id_comprobante),
+ producto VARCHAR(150) NOT NULL, cantidad INT NOT NULL, precio_unitario NUMERIC(10,2) NOT NULL,
+ subtotal NUMERIC(10,2) NOT NULL,
+ CONSTRAINT ck_comprobante_detalle CHECK(cantidad>0 AND precio_unitario>=0 AND subtotal=precio_unitario*cantidad)
+);
+CREATE INDEX idx_detalle_comprobante ON detalle_comprobante(id_comprobante);
+CREATE INDEX idx_caja_cuentas ON ventas(cuenta_solicitada,estado_venta,fecha_solicitud_cuenta);
+INSERT INTO rol(nombre_rol,descripcion) VALUES('COCINERO','Acceso exclusivo a cocina')
+ON CONFLICT(nombre_rol) DO NOTHING;
+INSERT INTO pos_migraciones(version) VALUES('06_caja_whatsapp_comprobantes');
+COMMIT;

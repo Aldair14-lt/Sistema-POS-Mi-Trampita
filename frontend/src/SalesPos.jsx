@@ -10,6 +10,9 @@ import TablesView from './TablesView'
 import Receipt from './Receipt'
 import UniversalPaymentModal from './components/UniversalPaymentModal'
 import OrderStatus from './components/OrderStatus'
+import useOperationEvents from './hooks/useOperationEvents'
+import useOrderAlerts from './hooks/useOrderAlerts'
+import { Volume2, VolumeX } from 'lucide-react'
 
 const blankCustomer = {
   numeroDocumento: '',
@@ -104,6 +107,16 @@ export default function SalesPos({ session }) {
     return () => { mounted = false; clearInterval(timer) }
   }, [])
 
+  useOperationEvents(async () => {
+    try {
+      const [tables, sales, stock] = await Promise.all([api.list('/api/mesas'), api.list('/api/ventas/abiertas'), api.list('/api/productos')])
+      setMesas(tables); setOpenSales(sales.filter(sale => sale.origenPedido === 'LOCAL')); setProducts(stock)
+    } catch (err) { setError(err.message) }
+  })
+  const readyKeys = useMemo(() => loading ? null : openSales.flatMap(sale =>
+    sale.detalles.filter(item => item.estadoPreparacion === 'LISTO').map(item => item.id)), [openSales, loading])
+  const alerts = useOrderAlerts(readyKeys)
+
   const selectedReceipt = useMemo(
     () => comprobantes.find((item) => String(item.id) === String(comprobanteId)),
     [comprobantes, comprobanteId]
@@ -177,12 +190,19 @@ export default function SalesPos({ session }) {
     }
   }
 
-  const selectMesa = (mesa) => {
+  const selectMesa = async (mesa) => {
     if (cart.length && String(selectedMesaId) !== String(mesa.id)) return setError('Envía o quita los productos pendientes antes de cambiar de mesa.')
     if (String(selectedMesaId) === String(mesa.id)) return
     const sale = openSales.find((item) => item.mesa?.id === mesa.id)
     if (sale) return selectOpenSale(String(sale.id))
     if (mesa.estado === 'ATENDIENDO') return setError('Actualiza el salón para cargar la comanda de esta mesa.')
+    if (canOrder && mesa.estado === 'LIBRE') {
+      setSaving(true); setError('')
+      try {
+        const opened = await api.patch(`/api/mesas/${mesa.id}/abrir`, {})
+        setMesas(current => current.map(item => item.id === opened.id ? opened : item))
+      } catch (err) { setError(err.message); return } finally { setSaving(false) }
+    }
     setActiveSaleId('')
     setSelectedMesaId(String(mesa.id))
     setCart([])
@@ -315,6 +335,16 @@ export default function SalesPos({ session }) {
     } catch (err) { setError(err.message) } finally { setSaving(false) }
   }
 
+  const requestBill = async () => {
+    if (saving || !activeSale) return
+    setSaving(true); setError('')
+    try {
+      const updated = await api.patch(`/api/ventas/${activeSale.id}/solicitar-cuenta`, {})
+      setOpenSales(current => current.map(sale => sale.id === updated.id ? updated : sale))
+      setNotice('Cuenta solicitada. Caja ya recibió el aviso.')
+    } catch (err) { setError(err.message) } finally { setSaving(false) }
+  }
+
   const changeTableState = async (action) => {
     setSaving(true); setError('')
     try {
@@ -331,6 +361,8 @@ export default function SalesPos({ session }) {
       <div><span className="eyebrow">Operación / POS</span><h1>Punto de Venta</h1><p className="muted">{canOrder ? 'Selecciona una mesa y registra su comanda.' : 'Selecciona una comanda para cobrar y liberar la mesa.'}</p></div>
       <div className="pos-company-badge"><span className="workspace-dot" /> {empresas[0]?.nombreComercial || empresas[0]?.razonSocial || 'Configuración fiscal pendiente'}</div>
     </div>
+    <div className="cashier-toolbar"><button className="secondary-button sound-button" aria-pressed={alerts.sound} onClick={alerts.toggleSound}>{alerts.sound ? <Volume2 size={16} /> : <VolumeX size={16} />}{alerts.sound ? 'Sonido activo' : 'Activar sonido'}</button></div>
+    {alerts.incoming > 0 && <div className="operation-alert" role="status"><span>{alerts.incoming} plato(s) listo(s) para recoger en cocina.</span><button onClick={alerts.dismiss}>Entendido</button></div>}
     <TablesView areas={areas} mesas={mesas} openSales={openSales} selectedMesaId={selectedMesaId} onSelect={selectMesa} disabled={saving} />
     {selectedMesaId && !activeSale && <div className="table-actions">
       {canOrder && mesas.find(mesa => String(mesa.id) === String(selectedMesaId))?.estado === 'LIBRE' && <button className="secondary-button" disabled={saving} onClick={() => changeTableState('abrir')}>Ocupar mesa</button>}
@@ -400,6 +432,7 @@ export default function SalesPos({ session }) {
           {lastOrder && canOrder && <button type="button" className="secondary-button full" onClick={() => printTicket(lastOrder, 'COMANDA')}><Printer size={15} /> Imprimir comanda completa para cocina</button>}
           {lastSale && canCharge && <div className="sale-success"><CheckCircle2 size={16} /><span>Venta cobrada.</span><button type="button" className="print-sale-button" onClick={() => printTicket(lastSale, 'COMPROBANTE')}><Printer size={15} /> Imprimir comprobante</button></div>}
           {canOrder && <button type="button" className="primary-button full" onClick={submitSale} disabled={saving || !cart.length || activeSale?.estadoCuenta === 'CERRADA'}>{saving ? 'Guardando pedido...' : activeSale ? `Enviar adicional S/ ${formatMoney(additionalTotal)}` : `Enviar comanda S/ ${formatMoney(total)}`}</button>}
+          {canOrder && activeSale && <button type="button" className="secondary-button full" disabled={saving || cart.length > 0 || activeSale.cuentaSolicitada || activeSale.detalles.some(item => item.estadoPreparacion !== 'SERVIDO')} onClick={requestBill}>{activeSale.cuentaSolicitada ? 'Cuenta solicitada a Caja' : 'Solicitar cuenta a Caja'}</button>}
           {canCharge && activeSale && <button type="button" className="secondary-button full" onClick={() => setPaymentId(activeSale.id)} disabled={saving || cart.length > 0}>Pagos parciales / cerrar cuenta</button>}
         </div>
       </section>

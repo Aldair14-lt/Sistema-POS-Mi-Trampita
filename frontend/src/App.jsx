@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { api } from './api'
 import SalesPos from './SalesPos'
+import CashierDashboard from './pages/CashierDashboard'
 import MarketingDashboard from './MarketingDashboard'
 import { permissions, canView, defaultView } from './permissions'
 import KitchenBoard from './components/KitchenBoard'
@@ -27,7 +28,7 @@ const resources = {
 }
 
 const navGroups = [
-  { title: 'Operación', items: [['ventas', 'Mesas y ventas', ReceiptText], ['online', 'Pedidos online', Globe], ['cocina', 'Cocina', ChefHat]] },
+  { title: 'Operación', items: [['caja', 'Caja y recepción', BadgeDollarSign], ['ventas', 'Mesas y ventas', ReceiptText], ['online', 'Pedidos online', Globe], ['cocina', 'Cocina', ChefHat]] },
   { title: 'Gestión', reqAdmin: true, items: [['dashboard', 'Inicio', LayoutDashboard], ['marketing', 'Marketing', BarChart3], ['areas', 'Áreas', Store], ['mesas', 'Mesas', Store], ['productos', 'Productos', Package]] },
   { title: 'Directorio', reqAdmin: true, items: [['clientes', 'Clientes', UsersRound], ['proveedores', 'Proveedores', Truck], ['categorias', 'Categorías', Tags], ['marcas', 'Marcas', Archive]] },
   { title: 'Administración', reqAdmin: true, items: [['usuarios', 'Usuarios', UserRound], ['roles', 'Roles', ShieldCheck], ['configuracion', 'Configuración', Settings2], ['tipos-comprobante', 'Comprobantes', ReceiptText]] },
@@ -40,7 +41,7 @@ function App() {
   const [mobileNav, setMobileNav] = useState(false)
   useEffect(() => {
     localStorage.removeItem('pos-session')
-    api.list('/api/auth/me').then(setSession).catch(() => setSession(null)).finally(() => setChecking(false))
+    api.list('/api/auth/me').then(data => { setSession(data); setView(defaultView(data)) }).catch(() => setSession(null)).finally(() => setChecking(false))
     const expired = () => setSession(null)
     window.addEventListener('pos-session-expired', expired)
     return () => window.removeEventListener('pos-session-expired', expired)
@@ -87,7 +88,7 @@ function Shell({ session, view, setView, mobileNav, setMobileNav, onLogout }) {
     return <div className="nav-group" key={group.title}><span className="nav-label">{group.title}</span>{group.items.filter(([key]) => canView(session, key)).map(([key, label, Icon]) => <button className={`nav-item ${view === key ? 'active' : ''}`} key={key} onClick={() => setView(key)}><Icon size={17} /><span>{label}</span>{key === 'ventas' && <span className="nav-badge">POS</span>}</button>)}</div>
   })}</nav><div className="sidebar-bottom">
   {isAdmin && <button className="nav-item" onClick={() => setView('configuracion')}><Settings2 size={17} /><span>Configuración</span></button>}
-  <div className="user-card"><div className="avatar">{session.nombreCompleto?.charAt(0).toUpperCase() || 'U'}</div><div><strong title={session.nombreCompleto}>{session.usuario}</strong><small>{isAdmin ? 'Administrador' : session.roles?.includes('COCINERO') ? 'Cocinero' : session.roles?.includes('CAJA') ? 'Caja' : 'Mozo / Ventas'}</small></div><button className="icon-button" onClick={onLogout} title="Cerrar sesión"><LogOut size={16} /></button></div></div></aside>{mobileNav && <button className="scrim" onClick={() => setMobileNav(false)} aria-label="Cerrar menú" />}<main className="main-content"><header className="topbar"><button className="icon-button menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menú"><Menu size={21} /></button><div className="crumb"><Command size={16} /><span>/</span><strong>{view === 'dashboard' ? 'Inicio' : view === 'ventas' ? 'Mesas y ventas' : view === 'marketing' ? 'Marketing' : view === 'cocina' ? 'Cocina' : view === 'online' ? 'Pedidos online' : resources[view]?.label}</strong></div><div className="top-actions"><span className="connection"><span /> API conectada</span><button className="icon-button" title="Perfil" onClick={() => { if(isAdmin) setView('usuarios') }}><CircleUserRound size={19} /></button></div></header><div className="content">{view === 'dashboard' ? <Dashboard setView={setView} /> : view === 'ventas' ? <Sales session={session} /> : view === 'cocina' ? <KitchenBoard /> : view === 'online' ? <OnlineOrdersBoard session={session} /> : view === 'marketing' && isAdmin ? <MarketingDashboard /> : isAdmin && resources[view] ? <ResourceView key={view} resource={resources[view]} /> : null}</div></main></div>
+  <div className="user-card"><div className="avatar">{session.nombreCompleto?.charAt(0).toUpperCase() || 'U'}</div><div><strong title={session.nombreCompleto}>{session.usuario}</strong><small>{isAdmin ? 'Administrador' : session.roles?.includes('COCINERO') ? 'Cocinero' : session.roles?.includes('CAJA') ? 'Caja' : 'Mozo / Ventas'}</small></div><button className="icon-button" onClick={onLogout} title="Cerrar sesión"><LogOut size={16} /></button></div></div></aside>{mobileNav && <button className="scrim" onClick={() => setMobileNav(false)} aria-label="Cerrar menú" />}<main className="main-content"><header className="topbar"><button className="icon-button menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menú"><Menu size={21} /></button><div className="crumb"><Command size={16} /><span>/</span><strong>{view === 'caja' ? 'Caja y recepción' : view === 'dashboard' ? 'Inicio' : view === 'ventas' ? 'Mesas y ventas' : view === 'marketing' ? 'Marketing' : view === 'cocina' ? 'Cocina' : view === 'online' ? 'Pedidos online' : resources[view]?.label}</strong></div><div className="top-actions"><span className="connection"><span /> API conectada</span><button className="icon-button" title="Perfil" onClick={() => { if(isAdmin) setView('usuarios') }}><CircleUserRound size={19} /></button></div></header><div className="content">{view === 'caja' ? <CashierDashboard /> : view === 'dashboard' ? <Dashboard setView={setView} /> : view === 'ventas' ? <Sales session={session} /> : view === 'cocina' ? <KitchenBoard /> : view === 'online' ? <OnlineOrdersBoard session={session} /> : view === 'marketing' && isAdmin ? <MarketingDashboard /> : isAdmin && resources[view] ? <ResourceView key={view} resource={resources[view]} /> : null}</div></main></div>
 }
 
 function Dashboard({ setView }) { return <><DashboardLegacy setView={setView} /><RecentSales /></> }
@@ -97,7 +98,7 @@ function RecentSales() {
   const [error, setError] = useState('')
   useEffect(() => { api.list('/api/ventas').then(setSales).catch((err) => setError(err.message)) }, [])
   const recent = sales.filter(sale => sale.estado === 'CERRADA').sort((a, b) => new Date(b.fechaVenta || 0) - new Date(a.fechaVenta || 0)).slice(0, 5)
-  return <section className="panel recent-panel"><div className="panel-head"><div><span className="eyebrow">Actividad</span><h3>Últimas ventas</h3></div><ReceiptText size={20} className="accent-icon" /></div>{error ? <div className="api-error">No se pudo cargar la actividad.</div> : recent.length ? <div className="recent-sales">{recent.map((sale) => <div className="recent-sale" key={sale.id}><span className="recent-sale-icon"><ReceiptText size={15} /></span><div><strong>{sale.tipoComprobante?.nombre || 'Comprobante'} · {sale.numeroComprobante}</strong><small>{sale.cliente?.nombresRazonSocial || 'Cliente'} · {sale.fechaVenta ? new Date(sale.fechaVenta).toLocaleString('es-PE') : 'Fecha pendiente'}</small></div><b>S/ {Number(sale.total || 0).toFixed(2)}</b></div>)}</div> : <EmptyState text="Todavía no hay ventas registradas." />}</section>
+  return <section className="panel recent-panel"><div className="panel-head"><div><span className="eyebrow">Actividad</span><h3>Últimas ventas</h3></div><ReceiptText size={20} className="accent-icon" /></div>{error ? <div className="api-error">No se pudo cargar la actividad.</div> : recent.length ? <div className="recent-sales">{recent.map((sale) => <div className="recent-sale" key={sale.id}><span className="recent-sale-icon"><ReceiptText size={15} /></span><div><strong>{sale.tipoComprobante?.nombre || 'Comprobante'} · {sale.comprobante?.numero || sale.numeroComprobante}</strong><small>{sale.cliente?.nombresRazonSocial || 'Cliente'} · {sale.fechaVenta ? new Date(sale.fechaVenta).toLocaleString('es-PE') : 'Fecha pendiente'}</small></div><b>S/ {Number(sale.total || 0).toFixed(2)}</b></div>)}</div> : <EmptyState text="Todavía no hay ventas registradas." />}</section>
 }
 
 function DashboardLegacy({ setView }) {

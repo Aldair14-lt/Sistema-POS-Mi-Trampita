@@ -17,6 +17,7 @@ public class MesaService {
     private final MesaRepository mesas;
     private final AreaRepository areas;
     private final VentaRepository ventas;
+    private final OperationEvents events;
 
     @Transactional(readOnly = true)
     public List<Mesa> listar(Integer areaId) {
@@ -57,6 +58,7 @@ public class MesaService {
         Mesa mesa = bloquearParaAbrir(id);
         if (mesa.getEstado() != EstadoMesa.LIBRE) throw conflict("La mesa ya está ocupada");
         mesa.setEstado(EstadoMesa.OCUPADA);
+        events.changed(false);
         return mesa;
     }
 
@@ -66,6 +68,7 @@ public class MesaService {
         if (ventas.existsByMesa_IdAndEstado(id, EstadoVenta.ABIERTA))
             throw conflict("Cobra la comanda antes de liberar la mesa");
         mesa.setEstado(EstadoMesa.LIBRE);
+        events.changed(false);
         return mesa;
     }
 

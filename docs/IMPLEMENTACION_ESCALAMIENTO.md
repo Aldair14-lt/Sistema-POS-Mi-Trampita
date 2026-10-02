@@ -1,5 +1,8 @@
 # Recreo Mi Trampita: áreas, marketing, roles y cobro transaccional
 
+> Para el código actual aplica las migraciones pendientes hasta 06 siguiendo [Caja, WhatsApp y KDS](CAJA_WHATSAPP_KDS.md). Esta guía conserva el escalamiento inicial.
+
+
 Esta guía describe la versión 04. La versión actual requiere también la sección 05, integrada al final de los mismos dos archivos SQL: [CUENTAS_ONLINE_KDS.md](CUENTAS_ONLINE_KDS.md). Desde 05 el stock se descuenta al enviar pedidos, los abonos se registran por separado y el cierre exige pago completo y entrega. Las instrucciones de abajo sobre stock al cobrar corresponden a 04.
 
 Los cambios ya están aplicados en el workspace. El archivo [CODIGO_IMPLEMENTADO.md](CODIGO_IMPLEMENTADO.md) contiene el código completo en bloques separados, encabezados con la ruta exacta de cada archivo. No es necesario volver a pegarlo.

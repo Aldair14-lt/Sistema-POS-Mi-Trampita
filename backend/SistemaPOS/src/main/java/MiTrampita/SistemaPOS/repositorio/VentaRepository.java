@@ -14,13 +14,18 @@ public interface VentaRepository extends JpaRepository<Venta, Integer> {
 
     List<Venta> findAllByEstadoOrderByFechaVentaDesc(EstadoVenta estado);
 
+    List<Venta> findTop20ByEstadoOrderByFechaCobroDesc(EstadoVenta estado);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select v from Venta v where v.id = :id")
     Optional<Venta> findByIdForUpdate(Integer id);
 
     @Query("""
-        select v from Venta v where v.origenPedido = MiTrampita.SistemaPOS.entity.OrigenPedido.ONLINE
-          and v.estado = MiTrampita.SistemaPOS.entity.EstadoVenta.ABIERTA
+        select v from Venta v where v.origenPedido <> MiTrampita.SistemaPOS.entity.OrigenPedido.LOCAL
+          and v.estado <> MiTrampita.SistemaPOS.entity.EstadoVenta.ANULADA
+          and (v.estado = MiTrampita.SistemaPOS.entity.EstadoVenta.ABIERTA
+            or exists (select d.id from DetalleVenta d where d.venta = v
+              and d.estadoPreparacion <> MiTrampita.SistemaPOS.entity.EstadoPreparacion.SERVIDO))
         order by v.fechaVenta asc, v.id asc
         """)
     List<Venta> findOnlineActivos();

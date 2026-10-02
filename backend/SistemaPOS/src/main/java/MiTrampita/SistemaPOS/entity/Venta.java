@@ -70,6 +70,14 @@ public class Venta {
     private TipoEntrega tipoEntrega = TipoEntrega.MESA;
     @Column(name = "direccion_envio", length = 255)
     private String direccionEnvio;
+    @Column(name = "telefono_entrega", length = 20)
+    private String telefonoEntrega;
+    @Column(name = "cuenta_solicitada", nullable = false)
+    private boolean cuentaSolicitada;
+    @Column(name = "fecha_solicitud_cuenta")
+    private OffsetDateTime fechaSolicitudCuenta;
+    @OneToOne(mappedBy = "venta", cascade = CascadeType.PERSIST)
+    private Comprobante comprobante;
     @Column(name = "fecha_venta", nullable = false, updatable = false)
     private OffsetDateTime fechaVenta;
     @Column(name = "fecha_cobro")

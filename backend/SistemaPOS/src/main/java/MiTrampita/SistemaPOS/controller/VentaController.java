@@ -1,7 +1,7 @@
 package MiTrampita.SistemaPOS.controller;
 
 import MiTrampita.SistemaPOS.entity.*;
-import MiTrampita.SistemaPOS.dto.VentaResponse;
+import MiTrampita.SistemaPOS.dto.*;
 import MiTrampita.SistemaPOS.dto.RegistrarPagoRequest;
 import MiTrampita.SistemaPOS.dto.UpdateItemStatusRequest;
 import MiTrampita.SistemaPOS.dto.KitchenItemResponse;
@@ -31,8 +31,23 @@ public class VentaController {
     }
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
     public VentaResponse registrar(@Valid @RequestBody VentaRequest request, @AuthenticationPrincipal PosPrincipal principal) {
+        if (!principal.roles().contains("ADMIN") && !principal.roles().contains("CAJA")
+                && ((request.origenPedido() != null && request.origenPedido() != OrigenPedido.LOCAL) || request.pagoInicial() != null))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo Caja registra pedidos externos y pagos");
         return VentaResponse.from(service.registrar(request, principal.id()));
     }
+    @PostMapping("/whatsapp") @ResponseStatus(HttpStatus.CREATED)
+    public VentaResponse whatsapp(@Valid @RequestBody RegistrarPedidoWhatsAppRequest request,
+            @AuthenticationPrincipal PosPrincipal principal) {
+        return VentaResponse.from(service.registrar(request.toVenta(), principal.id()));
+    }
+    @PostMapping("/{id}/cobrar")
+    public VentaResponse cobrar(@PathVariable Integer id, @Valid @RequestBody CobrarVentaRequest request,
+            @AuthenticationPrincipal PosPrincipal principal) {
+        return VentaResponse.from(service.cobrar(id, request, principal.id()));
+    }
+    @PatchMapping("/{id}/solicitar-cuenta")
+    public VentaResponse solicitarCuenta(@PathVariable Integer id) { return VentaResponse.from(service.solicitarCuenta(id)); }
     @PatchMapping("/{id}/items")
     public VentaResponse agregarItems(@PathVariable Integer id, @Valid @RequestBody ActualizarItemsRequest request) {
         return VentaResponse.from(service.agregarItems(id, request.items()));

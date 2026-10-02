@@ -1,3 +1,3 @@
 package MiTrampita.SistemaPOS.entity;
 
-public enum OrigenPedido { LOCAL, ONLINE }
+public enum OrigenPedido { LOCAL, ONLINE, WHATSAPP, WEB }

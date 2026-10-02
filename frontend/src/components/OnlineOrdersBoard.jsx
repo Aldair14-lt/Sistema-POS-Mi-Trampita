@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
-import { Globe, Plus, RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Globe, Plus, RefreshCw, Volume2, VolumeX, Printer } from 'lucide-react'
+import { flushSync } from 'react-dom'
+import Receipt from '../Receipt'
+import useOrderAlerts from '../hooks/useOrderAlerts'
 import { api } from '../api'
 import { permissions } from '../permissions'
 import usePolling from '../hooks/usePolling'
@@ -16,6 +19,11 @@ export default function OnlineOrdersBoard({ session }) {
   const [actionError, setActionError] = useState('')
   const [notification, setNotification] = useState('')
   const seen = useRef(null)
+  const [closed, setClosed] = useState(null)
+  const [printDocument, setPrintDocument] = useState(null)
+  const readyKeys = useMemo(() => data?.flatMap(sale => sale.detalles.filter(item => item.estadoPreparacion === 'LISTO').map(item => item.id)), [data])
+  const alerts = useOrderAlerts(readyKeys)
+  const print = sale => { flushSync(() => setPrintDocument(sale)); window.print() }
   useEffect(() => {
     if (!data) return
     const ids = new Set(data.map(sale => sale.id))
@@ -37,14 +45,17 @@ export default function OnlineOrdersBoard({ session }) {
       <p className="muted">Recojo y delivery · los pedidos siguen activos hasta cobrar y entregar.</p></div>
       <div className="table-actions"><button className="secondary-button" onClick={refresh}><RefreshCw size={16} /> Actualizar</button>
         {canCharge && <button className="primary-button" disabled={creating} onClick={() => setCreating(true)}><Plus size={16} /> Recibir pedido</button>}</div></div>
+    <div className="cashier-toolbar"><button className="secondary-button sound-button" aria-pressed={alerts.sound} onClick={alerts.toggleSound}>{alerts.sound ? <Volume2 size={16} /> : <VolumeX size={16} />}{alerts.sound ? 'Sonido activo' : 'Activar sonido'}</button></div>
+    {alerts.incoming > 0 && <div className="operation-alert" role="status"><span>{alerts.incoming} plato(s) listo(s) para despachar.</span><button onClick={alerts.dismiss}>Entendido</button></div>}
+    {closed && <div className="operation-alert"><span>{closed.comprobante.numero} emitida.</span><button onClick={() => print(closed)}><Printer size={15} />Imprimir</button></div>}
     {(actionError || error) && <div className="api-error" role="alert">{actionError || error}</div>}
     {notification && <div className="sale-success" role="status">{notification}<button className="secondary-button" onClick={() => setNotification('')}>Entendido</button></div>}
     {creating && <OnlineOrderForm onCancel={() => setCreating(false)} onCreated={() => { setCreating(false); refresh(); setNotification('Pedido recibido y enviado a cocina.') }} />}
     {loading ? <div className="loading">Cargando recepción…</div> : <div className="kitchen-grid">
       {(data || []).map(sale => <article className="panel kitchen-ticket" key={sale.id}>
-        <div className="panel-head"><div><span className="eyebrow">Pedido #{sale.id} · {new Date(sale.fechaVenta).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
+        <div className="panel-head"><div><span className="eyebrow">{sale.origenPedido} · Pedido #{sale.id} · {new Date(sale.fechaVenta).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
           <h3>{sale.tipoEntrega === 'DELIVERY' ? 'Delivery' : 'Recojo en local'}</h3></div><PaymentBadge sale={sale} /></div>
-        <div className="online-customer"><strong>{sale.cliente.nombresRazonSocial}</strong>{sale.cliente.telefono && <span>{sale.cliente.telefono}</span>}
+        <div className="online-customer"><strong>{sale.cliente.nombresRazonSocial}</strong>{(sale.telefonoEntrega || sale.cliente.telefono) && <span>{sale.telefonoEntrega || sale.cliente.telefono}</span>}
           {sale.direccionEnvio && <span>{sale.direccionEnvio}</span>}</div>
         <ul className="kitchen-items">{sale.detalles.map(item => <li key={item.id}><div><strong>{item.cantidad} × {item.producto.nombre}</strong><OrderStatus state={item.estadoPreparacion} /></div>
           {item.estadoPreparacion === 'LISTO' && <button className="primary-button" disabled={busy !== null} onClick={() => serve(item)}>Entregado</button>}</li>)}</ul>
@@ -53,6 +64,7 @@ export default function OnlineOrdersBoard({ session }) {
       </article>)}
       {!data?.length && <div className="panel empty">No hay pedidos online activos.</div>}
     </div>}
-    {paymentId && <UniversalPaymentModal key={paymentId} saleId={paymentId} onClose={() => setPaymentId(null)} onUpdated={refresh} />}
+    <Receipt sale={printDocument} />
+    {paymentId && <UniversalPaymentModal key={paymentId} saleId={paymentId} onClose={() => setPaymentId(null)} onUpdated={sale => { if (sale.comprobante) setClosed(sale); refresh() }} />}
   </>
 }
