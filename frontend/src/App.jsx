@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Archive, ArrowRight, BadgeDollarSign, BarChart3, Boxes, BriefcaseBusiness, ChevronRight,
   CircleUserRound, ClipboardList, Command, LayoutDashboard, LogOut, Menu, Package,
   Plus, ReceiptText, Search, Settings2, ShieldCheck, Store, Tags, Truck, UserRound,
-  UsersRound, X, Zap, Minus, ShoppingCart, CheckCircle2, Pencil, Trash2, ChefHat, Globe
+  UsersRound, X, Zap, ChefHat, Globe
 } from 'lucide-react'
 import { api } from './api'
 import SalesPos from './SalesPos'
@@ -13,6 +13,9 @@ import { permissions, canView, defaultView } from './permissions'
 import KitchenBoard from './components/KitchenBoard'
 import BarBoard from './components/BarBoard'
 import OnlineOrdersBoard from './components/OnlineOrdersBoard'
+import Login from './pages/Login'
+import ResourceForm from './components/ResourceForm'
+import ResourceTable from './components/ResourceTable'
 
 const resources = {
   productos: { label: 'Productos', singular: 'producto', endpoint: '/api/productos', icon: Package, columns: [['nombre', 'Producto'], ['codigoBarras', 'Código'], ['precioVenta', 'Precio'], ['stockActual', 'Stock']] },
@@ -54,33 +57,6 @@ function App() {
     onLogout={async () => { try { await api.create('/api/auth/logout', {}); setSession(null) } catch (err) { window.alert(err.message) } }} />
 }
 
-function Login({ onLogin }) {
-  const [name, setName] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  
-  async function submit(event) {
-    event.preventDefault()
-    if (!name.trim() || !password.trim()) return setError('Ingresa tu usuario y contraseña.')
-    setLoading(true)
-    setError('')
-    try {
-      const res = await api.create('/api/auth/login', { usuario: name.trim(), contrasena: password })
-      onLogin(res)
-    } catch(e) {
-      setError(e.message || 'Credenciales inválidas o error de conexión.')
-    } finally {
-      setLoading(false)
-    }
-  }
-  
-  return <main className="login-page">
-    <section className="login-art"><div className="brand-mark"><Store size={20} /> MI TRAMPITA</div><div className="login-quote"><span>01 / POS</span><h1>MI TRAMPITA<br /><em>Trabajo con ritmo.</em></h1><p>Mesas, cocina y caja al ritmo del recreo.</p></div><div className="art-grid" /></section>
-    <section className="login-panel"><div className="login-form"><div className="mobile-brand"><Store size={20} /> MI TRAMPITA</div><span className="eyebrow">Punto de venta</span><h2>Bienvenido de vuelta</h2><p className="muted">Accede a tu espacio de trabajo.</p><form onSubmit={submit}><label>Usuario<input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Tu nombre de usuario" /></label><label style={{marginTop: '15px'}}>Contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Tu contraseña" /></label>{error && <div className="form-error">{error}</div>}<button className="primary-button full" type="submit" disabled={loading}>{loading ? 'Iniciando sesión...' : 'Entrar'} <ArrowRight size={18} /></button></form><p className="login-note"><Zap size={14} /> Autenticación en vivo contra la base de datos PostgreSQL.</p></div><span className="login-footer">Mi Trampita · 2026</span></section>
-  </main>
-}
-
 function Shell({ session, view, setView, mobileNav, setMobileNav, onLogout }) {
   const { isAdmin } = permissions(session);
 
@@ -120,148 +96,24 @@ function ResourceView({ resource }) {
   const [editing, setEditing] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const load = () => { setLoading(true); setError(''); api.list(resource.endpoint).then(setItems).catch((err) => setError(err.message)).finally(() => setLoading(false)) }
-  useEffect(load, [resource.endpoint])
+  const requestVersion = useRef(0)
+  const load = useCallback(() => {
+    const version = ++requestVersion.current
+    setLoading(true); setError('')
+    api.list(resource.endpoint)
+      .then(data => { if (version === requestVersion.current) setItems(data) })
+      .catch(err => { if (version === requestVersion.current) setError(err.message) })
+      .finally(() => { if (version === requestVersion.current) setLoading(false) })
+  }, [resource.endpoint])
+  useEffect(() => { load(); return () => { requestVersion.current++ } }, [load])
   const filtered = useMemo(() => items.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase())), [items, query])
   const openNew = () => { setEditing(null); setShowForm(true) }
   const openEdit = (item) => { setEditing(item); setShowForm(true) }
-  return <><div className="page-heading compact"><div><span className="eyebrow">Directorio / {resource.label}</span><h1>{resource.label}</h1><p className="muted">Gestiona la información conectada a tu base de datos.</p></div>{!resource.readOnly && <button className="primary-button" onClick={openNew}><Plus size={17} /> Nuevo {resource.singular}</button>}</div><section className="panel table-panel"><div className="table-toolbar"><div className="search-box"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Buscar ${resource.label.toLowerCase()}...`} /></div><span className="result-count">{filtered.length} registros</span></div>{error && <div className="api-error">{error}</div>}{loading ? <div className="loading">Cargando datos...</div> : <DataTable resource={resource} items={filtered} onRefresh={load} onEdit={openEdit} onError={setError} />}</section>{showForm && <ResourceForm key={`${resource.endpoint}-${editing?.id || 'new'}`} resource={resource} item={editing} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); setEditing(null); load() }} />}</>
+  return <><div className="page-heading compact"><div><span className="eyebrow">Directorio / {resource.label}</span><h1>{resource.label}</h1><p className="muted">Gestiona la información conectada a tu base de datos.</p></div>{!resource.readOnly && <button className="primary-button" onClick={openNew}><Plus size={17} /> Nuevo {resource.singular}</button>}</div><section className="panel table-panel"><div className="table-toolbar"><div className="search-box"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Buscar ${resource.label.toLowerCase()}...`} /></div><span className="result-count">{filtered.length} registros</span></div>{error && <div className="api-error">{error}</div>}{loading ? <div className="loading">Cargando datos...</div> : <ResourceTable resource={resource} items={filtered} onRefresh={load} onEdit={openEdit} onError={setError} />}</section>{showForm && <ResourceForm key={`${resource.endpoint}-${editing?.id || 'new'}`} resource={resource} item={editing} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); setEditing(null); load() }} />}</>
 }
 
-function DataTable({ resource, items, onRefresh, onEdit, onError }) { return items.length ? <div className="table-wrap"><table><thead><tr>{resource.columns.map(([, label]) => <th key={label}>{label}</th>)}{!resource.readOnly && <th>Acciones</th>}</tr></thead><tbody>{items.map((item) => <tr key={item.id}><>{resource.columns.map(([key]) => <td key={key}>{key.includes('precio') ? 'S/ ' + Number(item[key] || 0).toFixed(2) : (Array.isArray(item[key]) ? item[key].join(', ') : typeof item[key] === 'object' && item[key] !== null ? item[key].nombre || item[key].razonSocial || item[key].nombreCategoria || item[key].nombreMarca || 'Objeto' : item[key] ?? '—')}</td>)}</>{!resource.readOnly && <td className="row-actions"><button className="row-action" onClick={() => onEdit(item)} title={`Modificar ${resource.singular}`}><Pencil size={15} /></button><button className="row-action danger" onClick={() => { if (confirm(`¿Eliminar este ${resource.singular}? Esta acción no se puede deshacer.`)) api.remove(`${resource.endpoint}/${item.id}`).then(onRefresh).catch((err) => onError(err.message || 'No se pudo eliminar el registro.')) }} title={`Eliminar ${resource.singular}`}><Trash2 size={15} /></button></td>}</tr>)}</tbody></table></div> : <EmptyState text="No hay registros para mostrar." /> }
 function EmptyState({ text }) { return <div className="empty"><ClipboardList size={22} /><span>{text}</span></div> }
 
-function ResourceForm({ resource, item, onClose, onSaved }) {
-  const initialForm = useMemo(() => {
-    let base
-    switch (resource.label) {
-      case 'Categorías': base = { nombre: '', descripcion: '' }; break
-      case 'Marcas': base = { nombre: '' }; break
-      case 'Clientes': base = { numeroDocumento: '', nombresRazonSocial: '', direccion: '', telefono: '', correo: '', fechaNacimiento: '' }; break
-      case 'Proveedores': base = { rucDni: '', razonSocial: '', telefono: '', correo: '' }; break
-      case 'Usuarios': base = { usuario: '', contrasena: '', nombreCompleto: '', correoElectronico: '', estado: 'activo', rolIds: [] }; break
-      case 'Roles': base = { nombre: '', descripcion: '' }; break
-      case 'Configuración': base = { ruc: '', razonSocial: '', nombreComercial: '', direccion: '', telefono: '', correo: '' }; break
-      case 'Comprobantes': base = { nombre: '', serie: '', descripcion: '' }; break
-      case 'Áreas': base = { nombre: '', estado: 'ACTIVA' }; break
-      case 'Mesas': base = { numero: '', capacidad: 4, areaId: '' }; break
-      case 'Productos': base = { categoriaId: '', marcaId: '', proveedorId: '', codigoBarras: '', nombre: '', descripcion: '', precioCompra: 0, precioVenta: 0, stockActual: 0, stockMinimo: 5, areaDestino: 'COCINA', visibleWeb: false }; break
-      default: base = {}
-    }
-    if (!item) return base
-    const values = { ...base }
-    Object.keys(base).forEach((field) => { if (field !== 'contrasena') values[field] = item[field] ?? '' })
-    if (resource.label === 'Productos') {
-      values.categoriaId = item.categoria?.id ?? ''
-      values.marcaId = item.marca?.nombre?.toLowerCase() === 'sin marca' ? '' : (item.marca?.id ?? '')
-      values.proveedorId = item.proveedor?.id ?? ''
-    }
-    if (resource.label === 'Mesas') values.areaId = item.area?.id || ''
-    return values
-  }, [resource.label, item]);
-
-  const [form, setForm] = useState(initialForm)
-  const [saving, setSaving] = useState(false)
-  const submitting = useRef(false)
-  const [error, setError] = useState('')
-  const [relations, setRelations] = useState({ categorias: [], marcas: [], proveedores: [], areas: [], roles: [] })
-
-  useEffect(() => {
-    if (resource.label === 'Productos') {
-      Promise.all([
-        api.list('/api/categorias'),
-        api.list('/api/marcas'),
-        api.list('/api/proveedores')
-      ]).then(([c, m, p]) => setRelations(current => ({ ...current, categorias: c, marcas: m, proveedores: p }))).catch(err => setError(err.message))
-    }
-    if (resource.label === 'Mesas') api.list('/api/areas').then(areas => setRelations(current => ({ ...current, areas }))).catch(err => setError(err.message))
-    if (resource.label === 'Usuarios') api.list('/api/roles').then(roles => setRelations(current => ({ ...current, roles: roles.filter(role => ['ADMIN', 'MOZO', 'CAJA', 'COCINERO', 'BARTENDER'].includes(role.nombre)) }))).catch(err => setError(err.message))
-  }, [resource.label])
-
-  const update = (key, value) => setForm((current) => ({ ...current, [key]: value }))
-  
-  async function submit(event) {
-    event.preventDefault()
-    if (submitting.current) return
-    setError('')
-    const requiredText = ['nombre', 'codigoBarras', 'nombresRazonSocial', 'numeroDocumento', 'rucDni', 'razonSocial', 'ruc', 'usuario', 'nombreCompleto', 'serie']
-    if (resource.label === 'Configuración') requiredText.push('direccion')
-    if (!item && 'contrasena' in form) requiredText.push('contrasena')
-    const missing = requiredText.find((field) => field in form && !String(form[field]).trim())
-    if (missing) return setError('Completa todos los campos obligatorios.')
-    if ('contrasena' in form && form.contrasena && form.contrasena.length < 8) return setError('La contraseña debe tener al menos 8 caracteres.')
-    if ('correo' in form && form.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) return setError('Ingresa un correo válido.')
-    if ('correoElectronico' in form && form.correoElectronico && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correoElectronico)) return setError('Ingresa un correo válido.')
-    if (resource.label === 'Usuarios' && !form.rolIds.length) return setError('Selecciona al menos un rol.')
-    if (resource.label === 'Mesas' && !form.areaId) return setError('Selecciona el área de la mesa.')
-    const numericFields = ['precioCompra', 'precioVenta', 'stockActual', 'stockMinimo', 'numero', 'capacidad']
-    if (numericFields.some((field) => field in form && (!Number.isFinite(Number(form[field])) || Number(form[field]) < 0))) return setError('Los precios y el stock deben ser números mayores o iguales a cero.')
-    if (resource.label === 'Productos' && ['categoriaId', 'proveedorId'].some((field) => !Number.isInteger(Number(form[field])) || Number(form[field]) <= 0)) return setError('Selecciona categoría y proveedor.')
-    submitting.current = true; setSaving(true)
-    try {
-      const cleanForm = Object.fromEntries(Object.entries(form).map(([key, value]) => [key, typeof value === 'string' && key !== 'contrasena' ? value.trim() : value]))
-      const payload = resource.label === 'Productos' ? {
-        ...(item ? { version: item.version } : {}),
-        categoria: { id: Number(form.categoriaId) }, 
-        marca: form.marcaId ? { id: Number(form.marcaId) } : null, 
-        proveedor: { id: Number(form.proveedorId) }, 
-        codigoBarras: form.codigoBarras, 
-        nombre: form.nombre, 
-        descripcion: form.descripcion, 
-        precioCompra: Number(form.precioCompra), 
-        precioVenta: Number(form.precioVenta), 
-        stockActual: Number(form.stockActual), 
-        stockMinimo: Number(form.stockMinimo), areaDestino: form.areaDestino, visibleWeb: Boolean(form.visibleWeb)
-      } : resource.label === 'Mesas' ? {
-        numero: Number(form.numero),
-        capacidad: Number(form.capacidad),
-        areaId: Number(form.areaId)
-      } : resource.label === 'Clientes' ? { ...cleanForm, fechaNacimiento: form.fechaNacimiento || null } : cleanForm;
-      
-      if (item) await api.update(`${resource.endpoint}/${item.id}`, payload)
-      else await api.create(resource.endpoint, payload)
-      onSaved();
-    } catch (err) { 
-      setError(err.message || 'No se pudo guardar el registro.')
-    } finally { submitting.current = false; setSaving(false) }
-  }
-  
-  const fields = Object.keys(form)
-  return <div className="modal-backdrop"><section className="modal" style={{maxHeight: '90vh', overflowY: 'auto'}}><div className="modal-head"><div><span className="eyebrow">{item ? 'Modificar registro' : 'Nuevo registro'}</span><h2>{resource.singular}</h2></div><button className="icon-button" onClick={onClose} aria-label="Cerrar"><X size={19} /></button></div><form onSubmit={submit} className="form-grid">
-    {fields.map((field) => {
-      const isSelect = (resource.label === 'Productos' && ['categoriaId', 'marcaId', 'proveedorId'].includes(field)) || field === 'areaId';
-      if (field === 'rolIds') return <fieldset key={field} className="roles-field"><legend>Permisos del usuario</legend>{relations.roles.map(role => <label key={role.id}><input type="checkbox" checked={form.rolIds.includes(role.id)} onChange={event => update('rolIds', event.target.checked ? ['COCINERO', 'BARTENDER'].includes(role.nombre) ? [role.id] : [...form.rolIds.filter(id => !['COCINERO', 'BARTENDER'].includes(relations.roles.find(r => r.id === id)?.nombre)), role.id] : form.rolIds.filter(id => id !== role.id))} />{role.nombre}</label>)}</fieldset>
-      if (field === 'visibleWeb') return <label key={field} style={{display:'flex',alignItems:'center',gap:10}}><input type="checkbox" style={{width:18}} checked={Boolean(form.visibleWeb)} onChange={e => update(field, e.target.checked)} />Mostrar en el menú público</label>
-      if (field === 'areaDestino') return <label key={field}>Estación de preparación<select value={form[field]} onChange={e => update(field, e.target.value)}><option value="COCINA">Cocina</option><option value="BAR">Bar</option></select></label>
-      const labelText = field.replace(/[A-Z]/g, (letter) => ` ${letter}`).replace(/^./, (letter) => letter.toUpperCase());
-      const isRequired = (field === 'direccion' && resource.label === 'Configuración') || ['areaId','nombre', 'codigoBarras', 'nombresRazonSocial', 'numeroDocumento', 'rucDni', 'razonSocial', 'ruc', 'categoriaId', 'proveedorId', 'usuario', 'nombreCompleto', 'serie', 'numero', 'capacidad'].includes(field) || (field === 'contrasena' && !item);
-      const isNumber = field.toLowerCase().includes('precio') || field.toLowerCase().includes('stock') || ['numero', 'capacidad'].includes(field);
-
-      if (isSelect) {
-        const options = field === 'areaId' ? relations.areas.filter(area => area.estado === 'ACTIVA') : field === 'categoriaId' ? relations.categorias : field === 'marcaId' ? relations.marcas : relations.proveedores;
-        const nameField = field === 'areaId' ? 'nombre' : field === 'categoriaId' ? 'nombre' : field === 'marcaId' ? 'nombre' : 'razonSocial';
-        return <label key={field}>{labelText}{field === 'marcaId' && <small className="form-hint">Solo necesario para bebidas; las comidas usan “Sin marca”.</small>}
-          <select required={isRequired} value={form[field]} onChange={(e) => update(field, e.target.value)} style={{border: '1px solid var(--line)', padding: '14px 15px', borderRadius: '4px', background: 'var(--paper)'}}>
-            <option value="">Seleccione una opción</option>
-            {options.map(opt => <option key={opt.id} value={opt.id}>{opt[nameField]}</option>)}
-          </select>
-        </label>
-      }
-
-      if (field === 'estado') {
-        return <label key={field}>Estado
-          <select value={form[field]} onChange={(e) => update(field, e.target.value)} style={{border: '1px solid var(--line)', padding: '14px 15px', borderRadius: '4px', background: 'var(--paper)'}}>
-            {resource.label === 'Áreas' ? <><option value="ACTIVA">Activa</option><option value="INACTIVA">Inactiva</option></> : <><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="bloqueado">Bloqueado</option></>}
-          </select>
-        </label>
-      }
-
-      return <label key={field}>{labelText}
-        <input required={isRequired} disabled={saving} step={field.toLowerCase().includes('precio') ? '0.01' : isNumber ? '1' : undefined} min={['numero', 'capacidad'].includes(field) ? 1 : isNumber ? 0 : undefined} minLength={field === 'contrasena' ? 8 : undefined} maxLength={field === 'contrasena' ? 72 : undefined} type={field === 'fechaNacimiento' ? 'date' : field.toLowerCase().includes('contrase') ? 'password' : isNumber ? 'number' : field === 'correo' || field === 'correoElectronico' ? 'email' : 'text'} value={form[field]} onChange={(event) => update(field, event.target.value)} />
-      </label>
-    })}
-    {error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" disabled={saving} onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar'} <ArrowRight size={16} /></button></div></form></section></div>
-}
 
 function Sales({ session }) { return <SalesPos session={session} /> }
 

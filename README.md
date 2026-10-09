@@ -1,6 +1,8 @@
 # Sistema-POS-Mi-Trampita
 Un proyecto de sistema POS
 
+El login y los formularios de usuarios incluyen mostrar/ocultar contraseña. Consulta [las mejoras de accesibilidad y formularios compartidos](docs/LOGIN_Y_FORMULARIOS.md).
+
 ## Inicio rápido
 
 1. Para una instalación nueva, crea la base `pos_db` en PostgreSQL y ejecuta `database/scripts/pos_postgresql.sql` completo. Para MySQL, ejecuta `database/scripts/pos_mysql.sql` completo. Cada archivo incluye el esquema y todas las migraciones hasta la sección 10 de comandas adicionales idempotentes.

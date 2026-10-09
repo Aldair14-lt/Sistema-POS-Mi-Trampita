@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "errors": [],
+  "saleId": 33,
+  "checks": [
+    "adicional perdido y recarga sin doble stock",
+    "comanda imprime solo nueva tanda",
+    "JSON de pago corrupto y recarga sin doble abono",
+    "precios decimales en CRUD",
+    "almacenamiento restringido sin pantalla vacia"
+  ]
+}

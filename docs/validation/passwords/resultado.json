@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "errors": [],
+  "viewports": [
+    1440,
+    320,
+    390
+  ],
+  "checks": [
+    "ojito en login y usuarios sin enviar formularios",
+    "teclado y foco",
+    "login único bajo latencia",
+    "72 bytes UTF-8",
+    "contraseña literal con espacios",
+    "creación única y campos bloqueados",
+    "editar con contraseña vacía conserva credencial",
+    "eliminación única",
+    "móvil sin desborde y diálogo encima de la barra lateral"
+  ]
+}

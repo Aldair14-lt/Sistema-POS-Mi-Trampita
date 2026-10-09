@@ -1,0 +1,9 @@
+.resource-modal { max-height: 90vh; overflow-y: auto; }
+.resource-select {
+  border: 1px solid var(--line);
+  padding: 14px 15px;
+  border-radius: 10px;
+  background: var(--paper);
+}
+.modal label.resource-checkbox { display: flex; align-items: center; gap: 10px; }
+.modal .resource-checkbox input { width: 18px; }
