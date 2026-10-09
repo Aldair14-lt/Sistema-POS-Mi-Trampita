@@ -30,6 +30,7 @@ public class VentaService {
     private final MesaService mesaService;
     private final PagoVentaRepository pagos;
     private final ComprobanteService comprobanteService;
+    private final CajaService cajaService;
     private final DetalleVentaRepository detalles;
     private final OperationEvents events;
 
@@ -152,13 +153,17 @@ public class VentaService {
             producto.setStockActual(producto.getStockActual() - entry.getValue());
             BigDecimal precio = producto.getPrecioVenta();
             // Una tanda adicional nunca se mezcla con platos que cocina ya comenzó o terminó.
-            var detalle = new DetalleVenta();
-            detalle.setVenta(venta);
-            detalle.setProducto(producto);
-            detalle.setCantidad(entry.getValue());
-            detalle.setPrecioUnitario(precio);
-            detalle.setSubtotal(precio.multiply(BigDecimal.valueOf(entry.getValue())));
-            venta.getDetalles().add(detalle);
+            var notas = new TreeMap<String, Integer>();
+            items.stream().filter(i -> i.productoId().equals(entry.getKey())).forEach(i ->
+                notas.merge(i.observaciones() == null ? "" : i.observaciones().trim(), i.cantidad(), this::sumar));
+            for (var nota : notas.entrySet()) {
+                var detalle = new DetalleVenta();
+                detalle.setVenta(venta); detalle.setProducto(producto);
+                detalle.setAreaDestino(producto.getAreaDestino()); detalle.setObservaciones(nota.getKey());
+                detalle.setCantidad(nota.getValue()); detalle.setPrecioUnitario(precio);
+                detalle.setSubtotal(precio.multiply(BigDecimal.valueOf(nota.getValue())));
+                venta.getDetalles().add(detalle);
+            }
         }
         recalcularTotales(venta);
         venta.setCuentaSolicitada(false);
@@ -326,6 +331,7 @@ public class VentaService {
             throw conflict("El abono supera el saldo pendiente");
         var pago = new PagoVenta();
         pago.setVenta(venta);
+        pago.setSesionCaja(cajaService.bloquearParaPago(venta.getEmpresa().getId()));
         pago.setUsuario(usuarios.findById(usuarioId).orElseThrow(() -> missing("Usuario")));
         pago.setMonto(monto.setScale(2, RoundingMode.UNNECESSARY));
         pago.setMetodoPago(request.metodoPago());

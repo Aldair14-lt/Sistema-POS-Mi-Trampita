@@ -49,6 +49,10 @@ base, remaining = consolidated.split(marker, 1)
 migration, migration06 = remaining.split('-- 06. MIGRACIÓN DE BASE EXISTENTE / CAJA, WHATSAPP Y COMPROBANTES.', 1)
 migration06, migration07 = migration06.split('-- 07. FACTURACIÓN EN CAJA Y CANCELACIONES.', 1)
 migration07 = migration07.split('\n', 1)[1]
+migration07, migration08 = migration07.split('-- 08. TURNOS DE CAJA Y KDS ENRUTADO.', 1)
+migration08 = migration08.split('\n', 1)[1]
+migration08, migration09 = migration08.split('-- 09. MENU PUBLICO Y RECEPCION WEB.', 1)
+migration09 = migration09.split('\n', 1)[1]
 if not pg:
     base = base.replace('`pos_db`', '`' + args.database + '`')
 run(base, args.database)
@@ -116,6 +120,9 @@ run("""INSERT INTO comprobantes(id_venta,id_tipo_comprobante,tipo,serie,correlat
  SELECT v.id_venta,v.id_tipo_comprobante,'BOLETA','B001',42,'20999999991','Prueba','Prueba',
  '99999999','Cliente histórico',v.subtotal,v.igv_impuesto,v.total,CURRENT_TIMESTAMP
  FROM ventas v WHERE v.numero_comprobante='B001-00000042';""", args.database)
+assert 'Primero aplica' in run(migration08, args.database, fail=True)
+if not pg:
+    run('DROP PROCEDURE IF EXISTS migrar_pos_08;', args.database)
 run(migration07, args.database)
 assert run("SELECT tipo_comprobante FROM comprobantes;", args.database) == 'BOLETA'
 assert run("SELECT dni FROM comprobantes;", args.database) == '99999999'
@@ -126,6 +133,42 @@ run("UPDATE detalle_venta SET estado_preparacion='CANCELADO';", args.database, f
 assert run("SELECT COUNT(*) FROM detalle_venta WHERE estado_preparacion='CANCELADO';", args.database) == '0'
 if not pg:
     run('DROP PROCEDURE IF EXISTS migrar_pos_07;', args.database)
+
+usuarios_antes = run('SELECT id_usuario, "contraseña" FROM usuario ORDER BY id_usuario;' if pg else
+                     'SELECT id_usuario, `contraseña` FROM usuario ORDER BY id_usuario;', args.database)
+assert 'Primero aplica' in run(migration09, args.database, fail=True)
+if not pg:
+    run('DROP PROCEDURE IF EXISTS migrar_pos_09;', args.database)
+run(migration08, args.database)
+assert run("SELECT stock_actual FROM producto WHERE codigo_barras='QA-MIG';", args.database) == '8'
+assert run('SELECT COUNT(*) FROM pagos_venta WHERE id_sesion_caja IS NULL;', args.database) == '1'
+assert run('SELECT COUNT(*) FROM sesiones_caja;', args.database) == '0'
+assert run("SELECT COUNT(*) FROM rol WHERE nombre_rol='BARTENDER';", args.database) == '1'
+assert run('SELECT id_usuario, "contraseña" FROM usuario ORDER BY id_usuario;' if pg else
+           'SELECT id_usuario, `contraseña` FROM usuario ORDER BY id_usuario;', args.database) == usuarios_antes
+assert 'ya fue aplicada' in run(migration08, args.database, fail=True)
+if not pg:
+    run('DROP PROCEDURE IF EXISTS migrar_pos_08;', args.database)
+run("UPDATE producto SET area_destino='OTRO';", args.database, fail=True)
+run("""INSERT INTO sesiones_caja(id_empresa,empresa_abierta,abierto_por,fecha_apertura,clave_operacion,monto_inicial)
+ SELECT e.id_empresa,e.id_empresa,u.id_usuario,CURRENT_TIMESTAMP,'00000000-0000-0000-0000-000000000001',100
+ FROM empresa e,usuario u WHERE e.ruc='20999999991' AND u.usuario='admin';""", args.database)
+run("""INSERT INTO sesiones_caja(id_empresa,empresa_abierta,abierto_por,fecha_apertura,clave_operacion,monto_inicial)
+ SELECT e.id_empresa,e.id_empresa,u.id_usuario,CURRENT_TIMESTAMP,'00000000-0000-0000-0000-000000000002',100
+ FROM empresa e,usuario u WHERE e.ruc='20999999991' AND u.usuario='admin';""", args.database, fail=True)
+assert run('SELECT COUNT(*) FROM sesiones_caja;', args.database) == '1'
+
+run(migration09, args.database)
+assert run('SELECT COUNT(*) FROM producto WHERE visible_web;', args.database) == '0'
+assert run('SELECT COUNT(*) FROM tiendas_web;', args.database) == '0'
+assert run('SELECT COUNT(*) FROM solicitudes_web;', args.database) == '0'
+assert run('SELECT COUNT(*) FROM solicitud_web_items;', args.database) == '0'
+assert run("SELECT stock_actual FROM producto WHERE codigo_barras='QA-MIG';", args.database) == '8'
+assert run('SELECT id_usuario, "contraseña" FROM usuario ORDER BY id_usuario;' if pg else
+           'SELECT id_usuario, `contraseña` FROM usuario ORDER BY id_usuario;', args.database) == usuarios_antes
+assert 'ya fue aplicada' in run(migration09, args.database, fail=True)
+if not pg:
+    run('DROP PROCEDURE IF EXISTS migrar_pos_09;', args.database)
 
 # La instalación completa también debe funcionar ejecutando un solo archivo.
 full_database = args.database + '_full'
@@ -138,4 +181,8 @@ assert run('SELECT COUNT(*) FROM pagos_venta;', full_database) == '0'
 assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='06_caja_whatsapp_comprobantes';", full_database) == '1'
 assert run('SELECT COUNT(*) FROM comprobantes;', full_database) == '0'
 assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='07_caja_fiscal_cancelaciones';", full_database) == '1'
-print(f'PASS {args.engine}: instalación completa, migraciones 05/06/07, históricos, pagos, auditoría de cancelaciones y reejecución protegida. BD: {args.database}')
+assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='08_turnos_caja_kds_enrutado';", full_database) == '1'
+assert run('SELECT COUNT(*) FROM sesiones_caja;', full_database) == '0'
+assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='09_menu_publico_pedidos_web';", full_database) == '1'
+assert run('SELECT COUNT(*) FROM tiendas_web;', full_database) == '0'
+print(f'PASS {args.engine}: instalación completa, migraciones 05/06/07/08/09, históricos, contraseñas preservadas, turno único, destinos y reejecución protegida. BD: {args.database}')

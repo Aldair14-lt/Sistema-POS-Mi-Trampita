@@ -4,6 +4,7 @@ import { money } from './OrderStatus'
 
 export default function WhatsAppOrderForm({ onCreated, onCancel }) {
   const [catalog, setCatalog] = useState(null)
+  const [companyId, setCompanyId] = useState('')
   const [customer, setCustomer] = useState({ numeroDocumento: '', nombresRazonSocial: '', telefono: '', direccion: '' })
   const [clientId, setClientId] = useState('')
   const [origin, setOrigin] = useState('WHATSAPP')
@@ -25,6 +26,7 @@ export default function WhatsAppOrderForm({ onCreated, onCancel }) {
       .then(([products, companies, receipts, clients]) => {
         if (!active) return
         setCatalog({ products, companies, receipts, clients })
+        setCompanyId(String(companies[0]?.id || ''))
         setReceipt(String(receipts.find(r => r.nombre.toUpperCase().includes('BOLETA'))?.id || receipts[0]?.id || ''))
       }).catch(err => active && setError(err.message))
     return () => { active = false }
@@ -46,10 +48,10 @@ export default function WhatsAppOrderForm({ onCreated, onCancel }) {
       if (mode !== 'CONTRA_ENTREGA' && (!Number.isFinite(initial) || initial <= 0 || initial > total))
         return setError('El pago inicial debe ser mayor que cero y no superar el total.')
       pending.current = {
-        empresaId: catalog.companies[0].id, clienteId: clientId ? Number(clientId) : null, cliente: clientId ? null : { ...customer, nombresRazonSocial: customer.nombresRazonSocial.trim() },
+        empresaId: Number(companyId), clienteId: clientId ? Number(clientId) : null, cliente: clientId ? null : { ...customer, nombresRazonSocial: customer.nombresRazonSocial.trim() },
         tipoComprobanteId: Number(receipt), numeroComprobante: `${selected.serie}-ON-${crypto.randomUUID().slice(0, 18)}`,
         origenPedido: origin, tipoEntrega: delivery, direccion: delivery === 'DELIVERY' ? address.trim() : null, telefono: customer.telefono.trim(),
-        items: items.map(item => ({ productoId: Number(item.productoId), cantidad: Number(item.cantidad) })),
+        items: items.map(item => ({ productoId: Number(item.productoId), cantidad: Number(item.cantidad), observaciones: item.observaciones || '' })),
         pagoTotal: mode === 'TOTAL',
         pagoInicial: mode === 'CONTRA_ENTREGA' ? null : { monto: initial, metodoPago: method,
           montoRecibido: method === 'efectivo' ? initial : null, referencia: reference.trim(), claveOperacion: crypto.randomUUID() }
@@ -73,6 +75,7 @@ export default function WhatsAppOrderForm({ onCreated, onCancel }) {
     {error && <div className="form-error" role="alert">{error}</div>}
     {!catalog ? <p className="loading">Cargando catálogo…</p> : <form onSubmit={submit}>
       <fieldset disabled={busy || uncertain}><legend>Cliente y entrega</legend>
+      <label>Empresa del pedido<select required value={companyId} onChange={e => setCompanyId(e.target.value)}>{catalog.companies.map(c => <option key={c.id} value={c.id}>{c.razonSocial}</option>)}</select></label>
       <div className="inline-fields"><label>Canal<select value={origin} onChange={event => setOrigin(event.target.value)}><option value="WHATSAPP">WhatsApp / Redes</option><option value="WEB">Web</option></select></label>
         <label>Cliente<select aria-label="Cliente del pedido" value={clientId} onChange={event => {
           const id = event.target.value; setClientId(id)
@@ -90,6 +93,7 @@ export default function WhatsAppOrderForm({ onCreated, onCancel }) {
         <label>Producto<select aria-label="Producto" required value={item.productoId} onChange={e => updateItem(index, 'productoId', e.target.value)}><option value="">Selecciona</option>
           {catalog.products.map(p => <option key={p.id} value={p.id} disabled={p.stockActual <= 0}>{p.nombre} · S/ {money(p.precioVenta)} · stock {p.stockActual}</option>)}</select></label>
         <label>Cantidad<input type="number" min="1" max="100000" required step="1" value={item.cantidad} onChange={e => updateItem(index, 'cantidad', e.target.value)} /></label>
+        <label>Observaciones<input maxLength={255} value={item.observaciones || ''} onChange={e => updateItem(index, 'observaciones', e.target.value)} placeholder="Sin hielo, sin ají…" /></label>
         <button type="button" className="secondary-button" disabled={items.length === 1} onClick={() => setItems(items.filter((_, i) => i !== index))}>Quitar</button></div>)}
       <button type="button" className="secondary-button" disabled={items.length >= 200} onClick={() => setItems([...items, { productoId: '', cantidad: 1 }])}>Agregar producto</button>
       <legend>Pago inicial confirmado</legend><div className="inline-fields"><label>Modalidad<select aria-label="Modalidad" value={mode} onChange={e => setMode(e.target.value)}><option value="CONTRA_ENTREGA">Presencial / contra entrega</option><option value="ADELANTO">Adelanto</option><option value="TOTAL">Pago 100%</option></select></label>
@@ -98,7 +102,7 @@ export default function WhatsAppOrderForm({ onCreated, onCancel }) {
         <label>Referencia<input maxLength={100} value={reference} onChange={e => setReference(e.target.value)} /></label></div>}
       <p className="muted">Registra únicamente pagos que recepción haya confirmado.</p>
       </fieldset><div className="totals"><div><span>Subtotal</span><b>S/ {money(subtotal)}</b></div><div><span>IGV (18%)</span><b>S/ {money(total - subtotal)}</b></div><div className="total-line"><strong>Total</strong><strong>S/ {money(total)}</strong></div></div>
-      <button className="primary-button" disabled={busy}>{busy ? 'Enviando…' : uncertain ? 'Comprobar / reintentar pedido' : 'Enviar pedido a cocina'}</button>
+      <button className="primary-button" disabled={busy}>{busy ? 'Enviando…' : uncertain ? 'Comprobar / reintentar pedido' : 'Enviar pedido a Cocina / Bar'}</button>
     </form>}
   </section>
 }

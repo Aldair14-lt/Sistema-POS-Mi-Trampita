@@ -13,6 +13,7 @@ public record PosPrincipal(Integer id, String usuario, String nombreCompleto, Li
             case "MOZO", "VENTAS", "VENDEDOR", "MOZO/VENTAS" -> "MOZO";
             case "CAJA", "CAJERO" -> "CAJA";
             case "COCINERO" -> "COCINERO";
+            case "BARTENDER" -> "BARTENDER";
             default -> "SIN_ACCESO";
         };
     }

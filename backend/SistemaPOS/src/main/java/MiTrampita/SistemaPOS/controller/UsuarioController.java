@@ -38,10 +38,10 @@ public class UsuarioController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
         var requestedRoles = roles.findAllById(req.rolIds());
         if (requestedRoles.size() != new HashSet<>(req.rolIds()).size()
-                || requestedRoles.stream().anyMatch(r -> !Set.of("ADMIN", "MOZO", "CAJA", "COCINERO").contains(r.getNombre())))
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecciona roles ADMIN, MOZO, CAJA o COCINERO válidos");
-        if (requestedRoles.size() > 1 && requestedRoles.stream().anyMatch(r -> r.getNombre().equals("COCINERO")))
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "COCINERO debe asignarse como rol exclusivo");
+                || requestedRoles.stream().anyMatch(r -> !Set.of("ADMIN", "MOZO", "CAJA", "COCINERO", "BARTENDER").contains(r.getNombre())))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecciona roles ADMIN, MOZO, CAJA, COCINERO o BARTENDER válidos");
+        if (requestedRoles.size() > 1 && requestedRoles.stream().anyMatch(r -> Set.of("COCINERO", "BARTENDER").contains(r.getNombre())))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "COCINERO y BARTENDER deben asignarse como roles exclusivos");
         if (req.contrasena() != null && !req.contrasena().isBlank()) {
             if (req.contrasena().length() < 8 || req.contrasena().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72)
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La contraseña debe tener entre 8 y 72 caracteres");
@@ -63,7 +63,7 @@ public class UsuarioController {
     }
     private UsuarioResponse response(Usuario u) {
         var assigned = relaciones.findAllByUsuario_Id(u.getId()).stream()
-                .filter(r -> Set.of("ADMIN", "MOZO", "CAJA", "COCINERO").contains(r.getRol().getNombre())).toList();
+                .filter(r -> Set.of("ADMIN", "MOZO", "CAJA", "COCINERO", "BARTENDER").contains(r.getRol().getNombre())).toList();
         return new UsuarioResponse(u.getId(), u.getUsuario(), u.getNombreCompleto(), u.getCorreoElectronico(), u.getEstado(),
                 assigned.stream().map(r -> r.getRol().getId()).toList(), assigned.stream().map(r -> r.getRol().getNombre()).toList());
     }

@@ -20,6 +20,8 @@ public class PagoVenta {
     private Venta venta;
     @ManyToOne(optional = false) @JoinColumn(name = "id_usuario", nullable = false)
     private Usuario usuario;
+    @ManyToOne @JoinColumn(name = "id_sesion_caja")
+    private SesionCaja sesionCaja;
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal monto;
     @Enumerated(EnumType.STRING) @Column(name = "metodo_pago", nullable = false, length = 20)

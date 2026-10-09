@@ -31,6 +31,9 @@ class PosFlowTests {
     @Autowired ProductoService productoService;
     @Autowired MarketingService marketing;
     @Autowired MesaService mesaService;
+    @Autowired CajaService cajaService;
+    @Autowired PedidoWebService web;
+    @Autowired SolicitudWebRepository solicitudesWeb;
     @Autowired ProductoRepository productos;
     @Autowired MesaRepository mesas;
     @Autowired ClienteRepository clientes;
@@ -46,6 +49,136 @@ class PosFlowTests {
     @Autowired TipoComprobanteRepository comprobantes;
     private static final AtomicInteger sequence = new AtomicInteger(1000);
 
+    String tiendaWeb(Fixture f) {
+        var p = productos.findById(f.primero().getId()).orElseThrow(); p.setVisibleWeb(true); productos.save(p);
+        var bebida = productos.findById(f.segundo().getId()).orElseThrow(); bebida.setVisibleWeb(true); bebida.setAreaDestino(AreaDestino.BAR); productos.save(bebida);
+        String slug = "web-" + f.empresa().getId();
+        web.configurar(f.empresa().getId(), new PedidoWebDtos.Configurar(slug, true, true, true, "Horario QA")); return slug;
+    }
+    PedidoWebDtos.Enviar carrito(Fixture f, UUID clave, List<PedidoWebDtos.Item> items) {
+        var total = BigDecimal.TEN.multiply(BigDecimal.valueOf(items.stream().mapToInt(PedidoWebDtos.Item::cantidad).sum())).multiply(new BigDecimal("1.18")).setScale(2);
+        return new PedidoWebDtos.Enviar(clave, "Nombre del comprador", f.cliente().getNumeroDocumento(), "999888777", TipoEntrega.DELIVERY, "Av. Prueba 123", "Llamar al llegar", items, total);
+    }
+    PedidoWebDtos.Aceptar boletaWeb() {
+        return new PedidoWebDtos.Aceptar(comprobantes.findByNombreIgnoreCaseAndSerie("BOLETA", "B001").orElseThrow().getId());
+    }
+    @Test void carritoPublicoNoModificaStockPagosNiFichaYConfirmacionEsIdempotente() {
+        var f = fixture(5); String slug = tiendaWeb(f); long prevVentas = ventas.count(); long prevClientes = clientes.count();
+        var request = carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 2, "Sin ají"), new PedidoWebDtos.Item(f.segundo().getId(), 1, "Sin hielo")));
+        var recibido = web.enviar(slug, request); assertThat(recibido.estado()).isEqualTo("PENDIENTE"); assertThat(recibido.total()).isEqualByComparingTo("35.40");
+        assertThat(web.enviar(slug, request).codigoSeguimiento()).isEqualTo(recibido.codigoSeguimiento());
+        assertThat(ventas.count()).isEqualTo(prevVentas); assertThat(clientes.count()).isEqualTo(prevClientes);
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(5);
+        var solicitud = solicitudesWeb.findByEmpresa_IdAndCodigoSeguimiento(f.empresa().getId(), recibido.codigoSeguimiento()).orElseThrow();
+        var venta = web.aceptar(solicitud.getId(), boletaWeb(), f.usuario().getId());
+        assertThat(venta.origenPedido()).isEqualTo(OrigenPedido.WEB); assertThat(venta.saldoPendiente()).isEqualByComparingTo("35.40");
+        assertThat(venta.pagos()).isEmpty(); assertThat(venta.observacionesPedido()).isEqualTo("Llamar al llegar");
+        assertThat(web.aceptar(solicitud.getId(), boletaWeb(), f.usuario().getId()).id()).isEqualTo(venta.id());
+        assertThat(ventas.count()).isEqualTo(prevVentas + 1); assertThat(clientes.findById(f.cliente().getId()).orElseThrow().getNombresRazonSocial()).isEqualTo(f.cliente().getNombresRazonSocial());
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(3);
+        var pedido = service.obtener(venta.id()); assertThat(pedido.getDetalles()).extracting(DetalleVenta::getAreaDestino).containsExactlyInAnyOrder(AreaDestino.COCINA, AreaDestino.BAR);
+        assertThat(web.consultar(slug, UUID.fromString(recibido.codigoSeguimiento())).estado()).isEqualTo("ACEPTADO");
+        cocina.actualizar(pedido.getDetalles().getFirst().getId(), new UpdateItemStatusRequest(EstadoPreparacion.PREPARANDO, EstadoPreparacion.PENDIENTE), false, pedido.getDetalles().getFirst().getAreaDestino());
+        assertThat(web.consultar(slug, UUID.fromString(recibido.codigoSeguimiento())).estado()).isEqualTo("PREPARANDO");
+    }
+    @Test void confirmacionWebConcurrenteNoDuplicaVentaNiStock() throws Exception {
+        var f = fixture(3); String slug = tiendaWeb(f); var recibido = web.enviar(slug, carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 1, ""))));
+        int id = solicitudesWeb.findByEmpresa_IdAndCodigoSeguimiento(f.empresa().getId(), recibido.codigoSeguimiento()).orElseThrow().getId();
+        var inicio = new CountDownLatch(1); var pool = Executors.newFixedThreadPool(2);
+        try { List<Future<Integer>> resultados = new ArrayList<>(); for (int i = 0; i < 2; i++) resultados.add(pool.submit(() -> { inicio.await(); return web.aceptar(id, boletaWeb(), f.usuario().getId()).id(); }));
+            inicio.countDown(); assertThat(resultados.get(0).get(20, TimeUnit.SECONDS)).isEqualTo(resultados.get(1).get(20, TimeUnit.SECONDS));
+            assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(2);
+        } finally { pool.shutdownNow(); }
+    }
+    @Test void cambioDePrecioYFaltaDeStockRevierteConfirmacionCompleta() {
+        var f = fixture(3); String slug = tiendaWeb(f); long prevVentas = ventas.count();
+        var recibido = web.enviar(slug, carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 1, ""), new PedidoWebDtos.Item(f.segundo().getId(), 1, ""))));
+        int id = solicitudesWeb.findByEmpresa_IdAndCodigoSeguimiento(f.empresa().getId(), recibido.codigoSeguimiento()).orElseThrow().getId();
+        var segundo = productos.findById(f.segundo().getId()).orElseThrow(); segundo.setPrecioVenta(new BigDecimal("11.00")); productos.save(segundo);
+        assertThatThrownBy(() -> web.aceptar(id, boletaWeb(), f.usuario().getId())).hasMessageContaining("Cambió el menú");
+        segundo = productos.findById(f.segundo().getId()).orElseThrow(); segundo.setPrecioVenta(BigDecimal.TEN); segundo.setStockActual(0); productos.save(segundo);
+        assertThatThrownBy(() -> web.aceptar(id, boletaWeb(), f.usuario().getId())).isInstanceOf(StockInsuficienteException.class);
+        assertThat(ventas.count()).isEqualTo(prevVentas); assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(3);
+        assertThat(solicitudesWeb.findById(id).orElseThrow().getEstado()).isEqualTo(SolicitudWeb.Estado.PENDIENTE);
+    }
+    @Test void webRechazaProductosPrivadosCantidadesAcumuladasYClavesAlteradas() {
+        var f = fixture(50); String slug = tiendaWeb(f); var request = carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 1, "")));
+        web.enviar(slug, request);
+        assertThatThrownBy(() -> web.enviar(slug, carrito(f, request.claveOperacion(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 2, ""))))).hasMessageContaining("otro pedido");
+        assertThatThrownBy(() -> web.enviar(slug, carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 15, "A"), new PedidoWebDtos.Item(f.primero().getId(), 6, "B"))))).hasMessageContaining("Máximo 20");
+        var p = productos.findById(f.segundo().getId()).orElseThrow(); p.setVisibleWeb(false); productos.save(p);
+        assertThatThrownBy(() -> web.enviar(slug, carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(p.getId(), 1, ""))))).hasMessageContaining("no está disponible");
+    }
+    @Test void webRespetaPausaEntregaLimitesExpiracionYRechazoSinReponerStock() {
+        var f = fixture(5); String slug = tiendaWeb(f);
+        web.configurar(f.empresa().getId(), new PedidoWebDtos.Configurar(slug, true, true, false, ""));
+        assertThatThrownBy(() -> web.enviar(slug, carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 1, ""))))).hasMessageContaining("modalidad");
+        web.configurar(f.empresa().getId(), new PedidoWebDtos.Configurar(slug, true, true, true, ""));
+        var recibido = web.enviar(slug, carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 1, ""))));
+        var s = solicitudesWeb.findByEmpresa_IdAndCodigoSeguimiento(f.empresa().getId(), recibido.codigoSeguimiento()).orElseThrow();
+        web.rechazar(s.getId(), new PedidoWebDtos.Rechazar("Fuera de cobertura"));
+        assertThat(web.consultar(slug, UUID.fromString(recibido.codigoSeguimiento())).motivo()).isEqualTo("Fuera de cobertura");
+        assertThatThrownBy(() -> web.aceptar(s.getId(), boletaWeb(), f.usuario().getId())).hasMessageContaining("rechazado");
+        var nuevo = web.enviar(slug, carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 1, ""))));
+        var viejo = solicitudesWeb.findByEmpresa_IdAndCodigoSeguimiento(f.empresa().getId(), nuevo.codigoSeguimiento()).orElseThrow(); viejo.setFechaCreacion(java.time.OffsetDateTime.now().minusHours(25)); solicitudesWeb.save(viejo);
+        assertThat(web.consultar(slug, UUID.fromString(nuevo.codigoSeguimiento())).estado()).isEqualTo("EXPIRADO");
+        assertThat(web.pendientes()).extracting(PedidoWebDtos.Solicitud::id).doesNotContain(viejo.getId());
+        web.configurar(f.empresa().getId(), new PedidoWebDtos.Configurar(slug, false, true, true, ""));
+        assertThatThrownBy(() -> web.menu(slug)).hasMessageContaining("no está recibiendo");
+        assertThat(web.consultar(slug, UUID.fromString(recibido.codigoSeguimiento())).estado()).isEqualTo("RECHAZADO");
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(5);
+    }
+    @Test void webAnonimaSoloExponeMenuYSeguimientoYConservaCsrfInterno() throws Exception {
+        var f = fixture(3); String slug = tiendaWeb(f);
+        mvc.perform(get("/api/public/tiendas/" + slug + "/menu")).andExpect(status().isOk()).andExpect(jsonPath("$.productos[0].precioCompra").doesNotExist())
+            .andExpect(jsonPath("$.productos[0].stockActual").doesNotExist()).andExpect(jsonPath("$.productos[0].proveedor").doesNotExist());
+        var path = "/api/public/tiendas/" + slug + "/pedidos";
+        String body = """
+            {"claveOperacion":"%s","nombre":"Comprador público","dni":"%s","telefono":"999888777","tipoEntrega":"RECOJO","items":[{"productoId":%d,"cantidad":1}],"totalEsperado":11.80,"total":0,"pagoInicial":{"monto":1000},"usuarioId":1}"""
+            .formatted(UUID.randomUUID(), f.cliente().getNumeroDocumento(), f.primero().getId());
+        mvc.perform(post(path).contentType("application/json").content(body)).andExpect(status().isCreated()).andExpect(jsonPath("$.total").value(11.80))
+            .andExpect(jsonPath("$.nombre").doesNotExist()).andExpect(jsonPath("$.dni").doesNotExist());
+        mvc.perform(post(path).contentType("application/json").content(body.replace("\"cantidad\":1", "\"cantidad\":0"))).andExpect(status().isBadRequest());
+        mvc.perform(post(path).contentType("application/json").content(body.replace("\"tipoEntrega\":\"RECOJO\"", "\"tipoEntrega\":\"MESA\""))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/web/solicitudes")).andExpect(status().isUnauthorized());
+        var mozo = login(user("MOZO")); var caja = login(user("CAJA"));
+        mvc.perform(get("/api/web/solicitudes").session(mozo)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/web/solicitudes").session(caja)).andExpect(status().isOk());
+        mvc.perform(get("/api/web/configuracion").session(caja)).andExpect(status().isForbidden());
+        mvc.perform(patch("/api/web/solicitudes/1/aceptar").session(caja).contentType("application/json").content("{\"tipoComprobanteId\":1}")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/public/tiendas/" + slug + "/pedidos/" + UUID.randomUUID())).andExpect(status().isNotFound());
+    }
+    @Test void limitePublicoEsAcotadoYNoPermiteDiezEnviosMasUno() {
+        var limite = new MiTrampita.SistemaPOS.security.PublicOrderRateLimiter();
+        for (int i = 0; i < 10; i++) limite.validar("127.0.0.1");
+        assertThatThrownBy(() -> limite.validar("127.0.0.1")).hasMessageContaining("Demasiados intentos");
+        limite.validar("127.0.0.2");
+    }
+    @Test void webPideRevisarElCarritoSiCambioElPrecioAntesDeEnviar() {
+        var f = fixture(3); String slug = tiendaWeb(f);
+        var request = carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 1, "")));
+        var p = productos.findById(f.primero().getId()).orElseThrow(); p.setPrecioVenta(new BigDecimal("12.00")); productos.save(p);
+        long prev = solicitudesWeb.count();
+        assertThatThrownBy(() -> web.enviar(slug, request)).hasMessageContaining("Actualiza la carta");
+        assertThat(solicitudesWeb.count()).isEqualTo(prev);
+        assertThat(productos.findById(p.getId()).orElseThrow().getStockActual()).isEqualTo(3);
+    }
+    @Test void limiteHttpPublicoSeAplicaAntesDeDeserializarYAcotaElCuerpo() throws Exception {
+        String path = "/api/public/tiendas/prueba/pedidos";
+        mvc.perform(post(path).with(r -> { r.setRemoteAddr("192.0.2.10"); return r; }).contentType("application/json").content(" ".repeat(32769)))
+            .andExpect(status().is(413));
+        for (int i = 0; i < 10; i++) mvc.perform(post(path).with(r -> { r.setRemoteAddr("192.0.2.11"); return r; }).contentType("application/json").content("{}"))
+            .andExpect(status().isBadRequest());
+        mvc.perform(post(path).with(r -> { r.setRemoteAddr("192.0.2.11"); return r; }).contentType("application/json").content("{}"))
+            .andExpect(status().is(429)).andExpect(header().string("Retry-After", "60"));
+    }
+    @Test void pedidosPendientesPorTelefonoNoPermitenAcapararYNoReservanStock() {
+        var f = fixture(5); String slug = tiendaWeb(f);
+        for (int i = 0; i < 3; i++) web.enviar(slug, carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 1, ""))));
+        assertThatThrownBy(() -> web.enviar(slug, carrito(f, UUID.randomUUID(), List.of(new PedidoWebDtos.Item(f.primero().getId(), 1, ""))))).hasMessageContaining("pendientes");
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(5);
+    }
+
     record Fixture(Producto primero, Producto segundo, Cliente cliente, Mesa mesa, Empresa empresa, Usuario usuario) { }
     Fixture fixture(int stock) {
         int seq = sequence.incrementAndGet();
@@ -55,6 +188,7 @@ class PosFlowTests {
         var cliente = new Cliente(); cliente.setNumeroDocumento(String.valueOf(10000000 + seq)); cliente.setNombresRazonSocial("Cliente " + seq);
         cliente.setFechaNacimiento(LocalDate.now().minusYears(25)); cliente = clientes.save(cliente);
         var user = user("MOZO");
+        cajaService.abrir(new SesionCajaDtos.Abrir(empresa.getId(), new BigDecimal("100.00"), UUID.randomUUID().toString()), user("CAJA").getId());
         var mesa = mesa();
         var p1 = product("P" + seq, stock, proveedor);
         var p2 = product("Q" + seq, stock, proveedor);
@@ -612,15 +746,19 @@ class PosFlowTests {
     @Test void cancelacionValidaMotivoSesionCsrfYRolYMozoNoVeOnline() throws Exception {
         var f = fixture(2); var v = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 1)));
         var path = "/api/ventas/items/" + v.getDetalles().getFirst().getId() + "/cancelar";
-        var mozo = login(f.usuario()); var cook = login(user("COCINERO"));
+        var mozo = login(f.usuario()); var cook = login(user("COCINERO")); var cashier = login(user("CAJA"));
         mvc.perform(patch(path).session(cook).with(csrf()).contentType("application/json").content("{\"motivo\":\"Cancelar\"}"))
             .andExpect(status().isForbidden());
         mvc.perform(patch(path).session(mozo).contentType("application/json").content("{\"motivo\":\"Cancelar\"}"))
             .andExpect(status().isForbidden());
         mvc.perform(patch(path).session(mozo).with(csrf()).contentType("application/json").content("{\"motivo\":\" \"}"))
+            .andExpect(status().isForbidden());
+        mvc.perform(patch(path).session(cashier).with(csrf()).contentType("application/json").content("{\"motivo\":\" \"}"))
             .andExpect(status().isBadRequest());
         mvc.perform(get("/api/pedidos-online").session(mozo)).andExpect(status().isForbidden());
         mvc.perform(patch(path).session(mozo).with(csrf()).contentType("application/json").content("{\"motivo\":\"Cambio del cliente\"}"))
+            .andExpect(status().isForbidden());
+        mvc.perform(patch(path).session(cashier).with(csrf()).contentType("application/json").content("{\"motivo\":\"Cambio del cliente\"}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("ANULADA"));
         var external = service.registrarOnline(online(f, null, false), f.usuario().getId());
         var externalId = external.getDetalles().getFirst().getId();
@@ -629,6 +767,132 @@ class PosFlowTests {
             .content("{\"motivo\":\"Intento sobre pedido externo\"}")).andExpect(status().isForbidden());
         mvc.perform(patch("/api/ventas/items/" + externalId + "/servir").session(mozo).with(csrf()).contentType("application/json")
             .content("{\"estado\":\"SERVIDO\",\"estadoActual\":\"LISTO\"}")).andExpect(status().isForbidden());
+    }
+
+    @Test void turnoArqueaSoloCobrosNetosYPermiteAbonosEntreTurnos() {
+        var f = fixture(4); var v = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 2)));
+        var actual = cajaService.actual(f.empresa().getId());
+        var efectivo = new RegistrarPagoRequest(new BigDecimal("5.00"), MetodoPago.EFECTIVO, new BigDecimal("20.00"), "", UUID.randomUUID().toString());
+        service.registrarPago(v.getId(), efectivo, f.usuario().getId());
+        service.registrarPago(v.getId(), abono("4.00"), f.usuario().getId());
+        var cierre = new SesionCajaDtos.Cerrar(new BigDecimal("104.00"), "Falta un sol");
+        var cerrado = cajaService.cerrar(actual.id(), cierre, f.usuario().getId());
+        assertThat(cerrado.totalCobrado()).isEqualByComparingTo("9.00");
+        assertThat(cerrado.efectivoEsperado()).isEqualByComparingTo("105.00");
+        assertThat(cerrado.diferencia()).isEqualByComparingTo("-1.00");
+        assertThat(cajaService.cerrar(actual.id(), cierre, f.usuario().getId()).fechaCierre()).isEqualTo(cerrado.fechaCierre());
+        assertThatThrownBy(() -> cajaService.cerrar(actual.id(), new SesionCajaDtos.Cerrar(BigDecimal.ZERO, ""), f.usuario().getId())).hasMessageContaining("otro arqueo");
+        // Un reintento confirmado del turno anterior no depende de que haya un turno abierto.
+        service.registrarPago(v.getId(), efectivo, f.usuario().getId());
+        assertThatThrownBy(() -> service.registrarPago(v.getId(), abono("1.00"), f.usuario().getId())).hasMessageContaining("Abre un turno");
+        var apertura = new SesionCajaDtos.Abrir(f.empresa().getId(), new BigDecimal("50.00"), UUID.randomUUID().toString());
+        var nuevo = cajaService.abrir(apertura, f.usuario().getId());
+        assertThat(cajaService.abrir(apertura, f.usuario().getId()).id()).isEqualTo(nuevo.id());
+        service.registrarPago(v.getId(), abono("14.60"), f.usuario().getId());
+        assertThat(cajaService.actual(f.empresa().getId()).totalCobrado()).isEqualByComparingTo("14.60");
+        assertThat(cajaService.obtener(actual.id()).totalCobrado()).isEqualByComparingTo("9.00");
+        assertThat(service.obtener(v.getId()).getPagos()).hasSize(3);
+    }
+
+    @Test void pagoInicialSinTurnoReviertePedidoYStock() {
+        var f = fixture(4); var actual = cajaService.actual(f.empresa().getId());
+        cajaService.cerrar(actual.id(), new SesionCajaDtos.Cerrar(new BigDecimal("100.00"), ""), f.usuario().getId());
+        long cantidad = ventas.count();
+        assertThatThrownBy(() -> service.registrarOnline(online(f, abono("1.00"), false), f.usuario().getId())).hasMessageContaining("Abre un turno");
+        assertThat(ventas.count()).isEqualTo(cantidad);
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(4);
+    }
+
+    @Test void aperturaConcurrentePermiteUnSoloTurno() throws Exception {
+        var f = fixture(1); var actual = cajaService.actual(f.empresa().getId());
+        cajaService.cerrar(actual.id(), new SesionCajaDtos.Cerrar(new BigDecimal("100.00"), ""), f.usuario().getId());
+        var inicio = new CountDownLatch(1); var pool = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Boolean>> results = new ArrayList<>();
+            for (int i = 0; i < 2; i++) results.add(pool.submit(() -> {
+                inicio.await();
+                try { cajaService.abrir(new SesionCajaDtos.Abrir(f.empresa().getId(), BigDecimal.TEN, UUID.randomUUID().toString()), f.usuario().getId()); return true; }
+                catch (org.springframework.web.server.ResponseStatusException ex) { assertThat(ex.getStatusCode().value()).isEqualTo(409); return false; }
+            }));
+            inicio.countDown();
+            int ganadores = 0; for (var r : results) if (r.get(20, TimeUnit.SECONDS)) ganadores++;
+            assertThat(ganadores).isEqualTo(1);
+        } finally { pool.shutdownNow(); }
+    }
+
+    @Test void cierreYPagoConcurrentesNoPierdenCobrosEnArqueo() throws Exception {
+        var f = fixture(3); var v = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 1)));
+        var actual = cajaService.actual(f.empresa().getId()); var inicio = new CountDownLatch(1); var pool = Executors.newFixedThreadPool(2);
+        try {
+            var pago = pool.submit(() -> {
+                inicio.await();
+                try { service.registrarPago(v.getId(), abono("1.00"), f.usuario().getId()); return true; }
+                catch (org.springframework.web.server.ResponseStatusException ex) { assertThat(ex.getStatusCode().value()).isEqualTo(409); return false; }
+            });
+            var cierre = pool.submit(() -> { inicio.await(); return cajaService.cerrar(actual.id(), new SesionCajaDtos.Cerrar(new BigDecimal("100.00"), ""), f.usuario().getId()); });
+            inicio.countDown(); boolean aceptado = pago.get(20, TimeUnit.SECONDS); var resultado = cierre.get(20, TimeUnit.SECONDS);
+            assertThat(resultado.totalCobrado()).isEqualByComparingTo(aceptado ? "1.00" : "0.00");
+            assertThat(service.obtener(v.getId()).getPagos()).hasSize(aceptado ? 1 : 0);
+        } finally { pool.shutdownNow(); }
+    }
+
+    @Test void barYCocinaSeparanColasYRechazanIdsDeOtraEstacion() throws Exception {
+        var f = fixture(3); var bebida = productos.findById(f.segundo().getId()).orElseThrow();
+        bebida.setAreaDestino(AreaDestino.BAR); productos.save(bebida);
+        var v = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 1, "Sin ají"), new ItemRequest(bebida.getId(), 1, "Sin hielo")));
+        var plato = v.getDetalles().stream().filter(d -> d.getAreaDestino() == AreaDestino.COCINA).findFirst().orElseThrow();
+        var trago = v.getDetalles().stream().filter(d -> d.getAreaDestino() == AreaDestino.BAR).findFirst().orElseThrow();
+        assertThat(cocina.cola()).extracting(KitchenItemResponse::id).contains(plato.getId()).doesNotContain(trago.getId());
+        assertThat(cocina.cola(AreaDestino.BAR)).extracting(KitchenItemResponse::id).contains(trago.getId()).doesNotContain(plato.getId());
+        var bartender = login(user("BARTENDER")); var cook = login(user("COCINERO"));
+        mvc.perform(get("/api/bar/items").session(bartender)).andExpect(status().isOk());
+        mvc.perform(get("/api/cocina/items").session(bartender)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/bar/items").session(cook)).andExpect(status().isForbidden());
+        for (var path : List.of("/api/ventas/abiertas", "/api/caja/resumen", "/api/marketing"))
+            mvc.perform(get(path).session(bartender)).andExpect(status().isForbidden());
+        mvc.perform(patch("/api/bar/items/" + plato.getId() + "/estado").session(bartender).with(csrf()).contentType("application/json")
+            .content("{\"estado\":\"PREPARANDO\",\"estadoActual\":\"PENDIENTE\"}")).andExpect(status().isForbidden());
+        mvc.perform(patch("/api/cocina/items/" + trago.getId() + "/estado").session(cook).with(csrf()).contentType("application/json")
+            .content("{\"estado\":\"PREPARANDO\",\"estadoActual\":\"PENDIENTE\"}")).andExpect(status().isForbidden());
+        mvc.perform(patch("/api/bar/items/" + trago.getId() + "/estado").session(bartender).with(csrf()).contentType("application/json")
+            .content("{\"estado\":\"PREPARANDO\",\"estadoActual\":\"PENDIENTE\"}")).andExpect(status().isOk()).andExpect(jsonPath("$.observaciones").value("Sin hielo"));
+        bebida = productos.findById(bebida.getId()).orElseThrow(); bebida.setAreaDestino(AreaDestino.COCINA); productos.save(bebida);
+        assertThat(cocina.cola(AreaDestino.BAR)).extracting(KitchenItemResponse::id).contains(trago.getId());
+    }
+
+    @Test void notasDistintasNoSeMezclanYElStockSeDescuentaUnaVez() {
+        var f = fixture(10);
+        var v = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 1, "Sin sal"), new ItemRequest(f.primero().getId(), 2, "Sin sal"), new ItemRequest(f.primero().getId(), 1, "Con ají")));
+        assertThat(v.getDetalles()).hasSize(2);
+        assertThat(v.getDetalles().stream().filter(d -> d.getObservaciones().equals("Sin sal")).findFirst().orElseThrow().getCantidad()).isEqualTo(3);
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(6);
+    }
+
+    @Test void marketingUsaUltimaVentaCobradaYNormalizaIdentificadores() throws Exception {
+        var f = fixture(4); var v = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 1)));
+        pagarYEntregar(v, f.usuario().getId()); service.cerrar(v.getId());
+        var c = clientes.findById(f.cliente().getId()).orElseThrow();
+        c.setTelefono("+51 999-888-777"); c.setCorreo("Cliente.QA@ejemplo.com");
+        c.setFechaNacimiento(LocalDate.now(java.time.ZoneId.of("America/Lima")).plusDays(10).minusYears(30)); clientes.save(c);
+        var vieja = ventas.findById(v.getId()).orElseThrow(); vieja.setFechaCobro(java.time.OffsetDateTime.now().minusDays(61)); ventas.save(vieja);
+        assertThat(marketing.inactivos(60)).extracting(MarketingService.ClienteResumen::id).contains(c.getId());
+        assertThat(marketing.proximosCumpleaneros(30)).extracting(MarketingService.ClienteResumen::id).contains(c.getId());
+        assertThat(marketing.exportarCsv("todos")).contains("email,phone,country\r\n", "cliente.qa@ejemplo.com,51999888777,pe\r\n");
+        mvc.perform(get("/api/marketing/exportar.csv").session(login(user("CAJA")))).andExpect(status().isForbidden());
+        var reciente = abrir(f, mesa(), List.of(new ItemRequest(f.primero().getId(), 1)));
+        pagarYEntregar(reciente, f.usuario().getId()); service.cerrar(reciente.getId());
+        assertThat(marketing.inactivos(60)).extracting(MarketingService.ClienteResumen::id).doesNotContain(c.getId());
+        assertThat(marketing.exportarCsv("todos")).doesNotContain(c.getNumeroDocumento());
+    }
+
+    @Test void turnosRequierenRolCajaCsrfYMontosValidos() throws Exception {
+        var f = fixture(1); var cashier = login(user("CAJA")); var mozo = login(f.usuario());
+        String body = "{\"empresaId\":" + f.empresa().getId() + ",\"montoInicial\":-1,\"claveOperacion\":\"" + UUID.randomUUID() + "\"}";
+        mvc.perform(post("/api/caja/sesiones/abrir").session(cashier).with(csrf()).contentType("application/json").content(body)).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/caja/sesiones/abrir").session(mozo).with(csrf()).contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/caja/sesiones/abrir").session(cashier).contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/caja/sesiones/actual").param("empresaId", f.empresa().getId().toString()).session(cashier))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.montoInicial").value(100.0));
     }
 
     @Test void facturaRevalidaClienteAlCobrarYRevierteTodoSiPerdioDatosFiscales() {

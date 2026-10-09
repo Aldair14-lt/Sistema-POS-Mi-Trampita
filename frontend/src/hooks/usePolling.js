@@ -32,6 +32,6 @@ export default function usePolling(path, interval = 5000) {
     poll()
     return () => { stopped = true; clearTimeout(timer); sequence.current++ }
   }, [refresh, interval])
-  useOperationEvents(refresh, path.startsWith('/api/cocina/'))
+  useOperationEvents(refresh, path.startsWith('/api/bar/') ? 'BAR' : path.startsWith('/api/cocina/'))
   return { data, error, loading, refresh }
 }

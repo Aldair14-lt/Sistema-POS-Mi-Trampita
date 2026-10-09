@@ -4,10 +4,9 @@ import {
   ShoppingCart, UserRound, X
 } from 'lucide-react'
 import { api } from './api'
-import { flushSync } from 'react-dom'
+import { usePrint } from './components/PrintManager'
 import { permissions } from './permissions'
 import TablesView from './TablesView'
-import Receipt from './Receipt'
 import UniversalPaymentModal from './components/UniversalPaymentModal'
 import CancelItemButton from './components/CancelItemButton'
 import OrderStatus from './components/OrderStatus'
@@ -39,8 +38,8 @@ export default function SalesPos({ session }) {
   const { canOrder, canCharge } = permissions(session)
   const [areas, setAreas] = useState([])
   const [lastOrder, setLastOrder] = useState(null)
-  const [printDocument, setPrintDocument] = useState(null)
-  const printTicket = (sale, printType) => { flushSync(() => setPrintDocument({ ...sale, printType })); window.print() }
+  const printDocument = usePrint()
+  const printTicket = (sale, printType, area) => printDocument({ sale, area, type: printType === 'COMANDA' ? 'COMMAND' : 'RECEIPT', format: printType === 'COMANDA' ? '80mm' : sale.comprobante?.tipoComprobante === 'FACTURA' ? 'A4' : '80mm' })
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [brands, setBrands] = useState([])
@@ -258,7 +257,7 @@ export default function SalesPos({ session }) {
       setSaving(true)
       try {
         const updatedSale = await api.patch(`/api/ventas/${activeSale.id}/items`, {
-          items: cart.map((item) => ({ productoId: item.id, cantidad: item.cantidad }))
+          items: cart.map((item) => ({ productoId: item.id, cantidad: item.cantidad, observaciones: item.observaciones || '' }))
         })
         setOpenSales((current) => current.map((sale) => sale.id === updatedSale.id ? updatedSale : sale))
         setCart([])
@@ -298,7 +297,7 @@ export default function SalesPos({ session }) {
         tipoComprobanteId: Number(selectedReceipt.id),
         numeroComprobante: `${selectedReceipt.serie}-${crypto.randomUUID().slice(0, 18)}`,
         mesaId: selectedMesaId ? Number(selectedMesaId) : null,
-        items: cart.map((item) => ({ productoId: item.id, cantidad: item.cantidad }))
+        items: cart.map((item) => ({ productoId: item.id, cantidad: item.cantidad, observaciones: item.observaciones || '' }))
       })
       setLastOrder(sale)
       api.list('/api/productos').then(setProducts).catch(err => setError(err.message))
@@ -397,7 +396,7 @@ export default function SalesPos({ session }) {
             <span>{detail.cantidad} × {detail.producto?.nombre || 'Producto'}<OrderStatus state={detail.estadoPreparacion} /></span>
             <b>S/ {formatMoney(detail.subtotal)}</b>
             {canOrder && detail.estadoPreparacion === 'LISTO' && <button type="button" className="secondary-button" disabled={saving} onClick={() => serveItem(detail)}>Entregado</button>}
-            {(canOrder || canCharge) && <CancelItemButton item={detail} onUpdated={updated => {
+            {canCharge && <CancelItemButton item={detail} onUpdated={updated => {
               setOpenSales(current => updated.estado === 'ANULADA' ? current.filter(sale => sale.id !== updated.id) : current.map(sale => sale.id === updated.id ? updated : sale))
               if (updated.estado === 'ANULADA') { setActiveSaleId(''); setSelectedMesaId(''); setCart([]) }
               api.list('/api/productos').then(setProducts).catch(err => setError(err.message))
@@ -406,7 +405,7 @@ export default function SalesPos({ session }) {
             }} />}
           </div>)}</div>}
           {!cart.length ? (!activeSale && <EmptyPos text={canOrder ? 'Agrega productos para comenzar.' : 'Selecciona una mesa con comanda abierta.'} />) : cart.map((item) => <div className="cart-item" key={item.id}>
-            <div className="cart-item-info"><strong>{item.nombre}</strong><small>S/ {formatMoney(item.precioVenta)} c/u · stock {item.stockActual}</small></div>
+            <div className="cart-item-info"><strong>{item.nombre}</strong><small>S/ {formatMoney(item.precioVenta)} c/u · stock {item.stockActual} · {item.areaDestino}</small><label>Observaciones<input maxLength={255} disabled={saving} value={item.observaciones || ''} onChange={e => setCart(current => current.map(p => p.id === item.id ? { ...p, observaciones: e.target.value } : p))} placeholder="Sin ají, sin hielo…" /></label></div>
             <div className="quantity-control"><button type="button" onClick={() => updateQuantity(item.id, -1)}><Minus size={13} /></button><b>{item.cantidad}</b><button type="button" onClick={() => updateQuantity(item.id, 1)}><Plus size={13} /></button></div>
             <button type="button" className="icon-button" onClick={() => removeFromCart(item.id)} title="Quitar producto"><X size={15} /></button>
           </div>)}
@@ -437,7 +436,8 @@ export default function SalesPos({ session }) {
           <div className="totals"><div><span>Subtotal</span><b>S/ {formatMoney(subtotal)}</b></div><div><span>IGV (18%)</span><b>S/ {formatMoney(igv)}</b></div><div className="total-line"><strong>Total</strong><strong>S/ {formatMoney(total)}</strong></div>{activeSale && <div><span>Abonado / Saldo actual</span><b>S/ {formatMoney(activeSale.totalPagado)} / S/ {formatMoney(activeSale.saldoPendiente)}</b></div>}</div>
           {error && <div className="form-error" role="alert"><AlertCircle size={15} /> {error}</div>}
           {notice && <div className="sale-success" role="status"><CheckCircle2 size={16} /><span>{notice}</span></div>}
-          {lastOrder && canOrder && <button type="button" className="secondary-button full" onClick={() => printTicket(lastOrder, 'COMANDA')}><Printer size={15} /> Imprimir comanda completa para cocina</button>}
+          {lastOrder && canOrder && <div className="command-print-actions">{['COCINA', 'BAR'].map(area => <button type="button" className="secondary-button" key={area} onClick={() => printTicket(lastOrder, 'COMANDA', area)}><Printer size={15} />Comanda {area}</button>)}</div>}
+          {lastOrder && canOrder && <button type="button" className="secondary-button full" onClick={() => printTicket(lastOrder, 'COMANDA')}><Printer size={15} /> Imprimir comanda completa</button>}
           {lastSale && canCharge && <div className="sale-success"><CheckCircle2 size={16} /><span>Venta cobrada.</span><button type="button" className="print-sale-button" onClick={() => printTicket(lastSale, 'COMPROBANTE')}><Printer size={15} /> Imprimir comprobante</button></div>}
           {canOrder && <button type="button" className="primary-button full" onClick={submitSale} disabled={saving || !cart.length || activeSale?.estadoCuenta === 'CERRADA'}>{saving ? 'Guardando pedido...' : activeSale ? `Enviar adicional S/ ${formatMoney(additionalTotal)}` : `Enviar comanda S/ ${formatMoney(total)}`}</button>}
           {canOrder && activeSale && <button type="button" className="secondary-button full" disabled={saving || cart.length > 0 || activeSale.cuentaSolicitada || activeSale.detalles.some(item => !['SERVIDO', 'CANCELADO'].includes(item.estadoPreparacion))} onClick={requestBill}>{activeSale.cuentaSolicitada ? 'Cuenta solicitada a Caja' : 'Solicitar cuenta a Caja'}</button>}
@@ -445,7 +445,6 @@ export default function SalesPos({ session }) {
         </div>
       </section>
     </div>
-    <Receipt sale={printDocument} />
     {paymentId && <UniversalPaymentModal key={paymentId} saleId={paymentId} onClose={() => setPaymentId(null)} onUpdated={paymentUpdated} />}
   </>
 }

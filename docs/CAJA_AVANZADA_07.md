@@ -1,5 +1,7 @@
 # Caja avanzada, comprobantes y cancelaciones
 
+> Guía histórica de 07. La guía vigente es [ECOSISTEMA_COMERCIAL_08.md](ECOSISTEMA_COMERCIAL_08.md): exige turno para nuevos pagos, añade Bar, limita cancelaciones a ADMIN/CAJA y unifica impresión 80 mm/A4. La sección 07 de los SQL termina antes del encabezado 08; sobre una base en 07 aplicar solamente 08.
+
 Implementación del 2 de octubre de 2026. Esta guía sustituye los contratos de cobro y permisos descritos en las guías 05/06. Se conserva Java 21, Records, Jakarta Validation, sesiones con CSRF y `ddl-auto=validate`.
 
 ## Flujo operativo

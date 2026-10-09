@@ -8,7 +8,7 @@ export function tableStatus(mesa, sale) {
   if (sale?.detalles.some(item => !['SERVIDO', 'CANCELADO'].includes(item.estadoPreparacion))) return 'waiting'
   return mesa.estado === 'LIBRE' && !sale ? 'free' : 'occupied'
 }
-const states = { free: ['Libre', Armchair], occupied: ['Comiendo', Utensils], billing: ['Por cobrar', CheckCheck], waiting: ['Esperando comida', Clock3] }
+const states = { free: ['Libre', Armchair], occupied: ['Ocupada', Utensils], billing: ['Por cobrar', CheckCheck], waiting: ['Esperando comida', Clock3] }
 const elapsed = (date, now) => {
   const minutes = Math.max(0, Math.floor((now - new Date(date)) / 60000))
   return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`

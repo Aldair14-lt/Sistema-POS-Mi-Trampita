@@ -47,13 +47,16 @@ admin.login(args.user, password)
 assert Client().call("GET", "/api/mesas", expected=401)["status"] == 401
 role_ids = {role["nombre"]: role["id"] for role in admin.call("GET", "/api/roles")}
 users = {}
-for role in ("MOZO", "CAJA", "COCINERO"):
+for role in ("MOZO", "CAJA", "COCINERO", "BARTENDER"):
     username = "qa_" + role.lower() + "_" + suffix
     admin.call("POST", "/api/usuarios", {"usuario": username, "contrasena": password,
         "nombreCompleto": "QA " + role, "estado": "activo", "rolIds": [role_ids[role]]}, expected=201)
     users[role] = Client()
     users[role].login(username, password)
 mozo, caja, cook = users["MOZO"], users["CAJA"], users["COCINERO"]
+bar = users["BARTENDER"]
+bar.call("GET", "/api/cocina/items", expected=403)
+cook.call("GET", "/api/bar/items", expected=403)
 mozo.call("GET", "/api/marketing", expected=403)
 caja.call("GET", "/api/configuracion", expected=403)
 caja.call("POST", "/api/ventas", {}, expected=400)
@@ -64,6 +67,7 @@ mesa = admin.call("POST", "/api/mesas", {"numero": max(m["numero"] for m in admi
 assert mozo.call("PATCH", f"/api/mesas/{mesa['id']}/abrir", {})["estado"] == "OCUPADA"
 company = admin.call("POST", "/api/configuracion", {"ruc": str(int(suffix, 16)), "razonSocial": "Empresa QA " + suffix,
     "direccion": "Dirección de prueba"}, expected=201)
+turno = caja.call("POST", "/api/caja/sesiones/abrir", {"empresaId": company["id"], "montoInicial": 100, "claveOperacion": str(uuid.uuid4())})
 client = admin.call("POST", "/api/clientes", {"numeroDocumento": str(int(suffix, 16)),
     "nombresRazonSocial": "Cliente QA " + suffix, "fechaNacimiento": datetime.date.today().replace(year=2000).isoformat()}, expected=201)
 provider = admin.call("POST", "/api/proveedores", {"rucDni": str(int(suffix, 16)), "razonSocial": "Proveedor QA"}, expected=201)
@@ -73,7 +77,7 @@ products = []
 for index in range(2):
     products.append(admin.call("POST", "/api/productos", {"categoria": {"id": category["id"]}, "marca": {"id": brand["id"]},
         "proveedor": {"id": provider["id"]}, "codigoBarras": f"QA-{suffix}-{index}", "nombre": f"Producto QA {index}",
-        "precioCompra": 1, "precioVenta": 10, "stockActual": 5, "stockMinimo": 0}, expected=201))
+        "precioCompra": 1, "precioVenta": 10, "stockActual": 5, "stockMinimo": 0, "areaDestino": "COCINA" if index == 0 else "BAR"}, expected=201))
 receipt = next(r for r in admin.call("GET", "/api/tipos-comprobante") if r["nombre"] == "BOLETA")
 payload = {"empresaId": company["id"], "clienteId": client["id"], "tipoComprobanteId": receipt["id"],
     "numeroComprobante": "QA-" + suffix, "mesaId": mesa["id"], "items": [{"productoId": p["id"], "cantidad": 2} for p in products]}
@@ -103,11 +107,12 @@ assert any(item["mesaNumero"] == mesa["numero"] for item in queue)
 
 def deliver(order):
     for item in order["detalles"]:
-        path = f"/api/cocina/items/{item['id']}/estado"
-        cook.call("PATCH", path, {"estado": "LISTO", "estadoActual": "PENDIENTE"}, expected=409)
-        cook.call("PATCH", path, {"estado": "PREPARANDO", "estadoActual": "PENDIENTE"})
-        cook.call("PATCH", path, {"estado": "LISTO", "estadoActual": "PENDIENTE"}, expected=409)
-        cook.call("PATCH", path, {"estado": "LISTO", "estadoActual": "PREPARANDO"})
+        ruta, station = ("bar", bar) if item["areaDestino"] == "BAR" else ("cocina", cook)
+        path = f"/api/{ruta}/items/{item['id']}/estado"
+        station.call("PATCH", path, {"estado": "LISTO", "estadoActual": "PENDIENTE"}, expected=409)
+        station.call("PATCH", path, {"estado": "PREPARANDO", "estadoActual": "PENDIENTE"})
+        station.call("PATCH", path, {"estado": "LISTO", "estadoActual": "PENDIENTE"}, expected=409)
+        station.call("PATCH", path, {"estado": "LISTO", "estadoActual": "PREPARANDO"})
         ready = caja.call("GET", f"/api/ventas/{order['id']}")
         assert next(d for d in ready["detalles"] if d["id"] == item["id"])["estadoPreparacion"] == "LISTO"
         caja.call("PATCH", f"/api/ventas/items/{item['id']}/servir", {"estado": "SERVIDO", "estadoActual": "LISTO"})
@@ -159,7 +164,7 @@ for index, initial in enumerate((None, 5, 11.80)):
     assert order["mesa"] is None and order["origenPedido"] == "ONLINE" and order["estado"] == "ABIERTA"
     assert order["estadoCuenta"] == ("ABIERTA" if initial is None else "PAGADA_PARCIALMENTE" if initial == 5 else "CERRADA")
     assert any(o["id"] == order["id"] for o in caja.call("GET", "/api/pedidos-online"))
-    assert any(item["ventaId"] == order["id"] and item["origenPedido"] == "ONLINE" for item in cook.call("GET", "/api/cocina/items"))
+    assert any(item["ventaId"] == order["id"] and item["origenPedido"] == "ONLINE" for item in bar.call("GET", "/api/bar/items"))
     if initial == 11.80:
         deliver(order)
         caja.call("PATCH", f"/api/ventas/{order['id']}/cerrar", {})
@@ -249,6 +254,15 @@ cook.call("PATCH", f"/api/cocina/items/{item_id}/estado", {"estado": "LISTO", "e
 assert any(i["id"] == item_id and i["estadoPreparacion"] == "LISTO" for i in cook.call("GET", "/api/cocina/items"))
 caja.call("PATCH", f"/api/ventas/items/{item_id}/servir", {"estado": "SERVIDO", "estadoActual": "LISTO"})
 assert not any(i["id"] == item_id for i in cook.call("GET", "/api/cocina/items"))
+cierre = caja.call("POST", f"/api/caja/sesiones/{turno['id']}/cerrar", {"efectivoDeclarado": 131.8, "observaciones": "QA completo"})
+assert float(cierre["totalCobrado"]) == 99.4 and float(cierre["efectivoEsperado"]) == 131.8
+assert float(cierre["diferencia"]) == 0
+assert caja.call("GET", f"/api/caja/sesiones/actual?empresaId={company['id']}") is None
+pendiente = next(o for o in caja.call("GET", "/api/pedidos-online") if float(o["saldoPendiente"]) > 0)
+caja.call("POST", f"/api/ventas/{pendiente['id']}/pagos", payment(1), expected=409)
+admin.call("GET", "/api/marketing/proximos-cumpleaneros")
+admin.call("GET", "/api/marketing/inactivos")
+admin.call("GET", "/api/marketing/mejores")
 admin.call("POST", "/api/auth/logout", {}, expected=204)
 admin.call("GET", "/api/mesas", expected=401)
-print("PASS HTTP: sesión/CSRF, roles, stock, rollback, abonos, reintentos, cierre, KDS, WhatsApp/Web, facturación, vuelto, cancelaciones, SSE y fidelización.")
+print("PASS HTTP: sesión/CSRF, roles Cocina/Bar, stock, rollback, abonos, reintentos, arqueo de turnos, KDS, WhatsApp/Web, factura, vuelto, cancelaciones, SSE y marketing.")

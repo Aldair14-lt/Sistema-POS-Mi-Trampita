@@ -60,6 +60,12 @@ public class Producto {
     @Min(0)
     @Column(name = "stock_minimo", nullable = false)
     private Integer stockMinimo = 5;
+    @NotNull @Enumerated(EnumType.STRING)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.VARCHAR)
+    @Column(name = "area_destino", nullable = false, length = 10)
+    private AreaDestino areaDestino = AreaDestino.COCINA;
+    @Column(name = "visible_web", nullable = false)
+    private boolean visibleWeb;
     @Column(name = "fecha_registro", insertable = false, updatable = false)
     private OffsetDateTime fechaRegistro;
 

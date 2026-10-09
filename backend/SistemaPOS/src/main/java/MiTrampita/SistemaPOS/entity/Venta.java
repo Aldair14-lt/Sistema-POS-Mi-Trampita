@@ -72,6 +72,8 @@ public class Venta {
     private String direccionEnvio;
     @Column(name = "telefono_entrega", length = 20)
     private String telefonoEntrega;
+    @Column(name = "observaciones_pedido", nullable = false, length = 255)
+    private String observacionesPedido = "";
     @Column(name = "cuenta_solicitada", nullable = false)
     private boolean cuentaSolicitada;
     @Column(name = "fecha_solicitud_cuenta")

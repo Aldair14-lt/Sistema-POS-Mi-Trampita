@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "viewport": [
+    1440,
+    390,
+    320
+  ],
+  "errors": [],
+  "slug": "menu-qa-08705946",
+  "companyId": 6,
+  "requestId": 9,
+  "saleId": 6,
+  "checks": [
+    "menú sin login",
+    "categorías y agotados",
+    "carrito persistente",
+    "recojo y delivery",
+    "móvil sin desborde",
+    "cambio de precio exige actualizar sin perder contacto",
+    "envío con respuesta perdida y reintento después de recargar",
+    "una solicitud y una confirmación",
+    "stock y KDS Cocina/Bar",
+    "seguimiento recibido/confirmado/listo",
+    "publicación y enlace",
+    "sin cookies ni llamadas al POS privado"
+  ]
+}

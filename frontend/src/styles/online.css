@@ -1,0 +1,13 @@
+.online-kanban { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.online-kanban-column { background: #f1f5f9; border: 1px solid #e2e8f0; padding: 14px; border-radius: 16px; min-width: 0; }
+.online-kanban-column > h3 { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 18px; }
+.online-kanban-column > h3 span { background: white; border-radius: 20px; padding: 4px 8px; }
+.online-kanban-column.state-listo { background: #ecfdf5; border-color: #a7f3d0; }
+.online-kanban-column.state-entregado { background: #fffbeb; border-color: #fcd34d; }
+.online-kanban-column .kitchen-ticket { margin-bottom: 14px; padding: 16px; }
+.online-empty { text-align: center; padding-block: 20px; font-size: 12px; }
+.cashier-column .online-kanban { grid-template-columns: 1fr; }
+.kds-print { display: flex; align-items: center; gap: 7px; margin: 12px; background: #22342c; color: #d1fae5; border: 1px solid #496154; border-radius: 8px; padding: 8px 12px; }
+.kds-dish em { color: #fde68a; font-style: normal; margin-top: 5px; overflow-wrap: anywhere; }
+@media(max-width: 1600px) { .online-kanban { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media(max-width: 650px) { .online-kanban { grid-template-columns: 1fr; } }

@@ -4,6 +4,7 @@ import { api } from '../../api'
 import usePolling from '../../hooks/usePolling'
 import { money } from '../OrderStatus'
 import '../../styles/cashier.css'
+import { usePrint } from '../PrintManager'
 
 const methods = [['efectivo', 'Efectivo', Banknote], ['yape', 'Yape', Smartphone], ['plin', 'Plin', Smartphone], ['tarjeta', 'Tarjeta', CreditCard]]
 const receipts = [['NOTA_VENTA', 'Ticket simple'], ['BOLETA', 'Boleta'], ['FACTURA', 'Factura']]
@@ -14,6 +15,9 @@ export default function PaymentModal({ saleId, onClose, onUpdated }) {
   const [mode, setMode] = useState('total')
   const [step, setStep] = useState(1)
   const [receipt, setReceipt] = useState('NOTA_VENTA')
+  const [format, setFormat] = useState('80mm')
+  const [printAfter, setPrintAfter] = useState(true)
+  const print = usePrint()
   const [fiscal, setFiscal] = useState({ ruc: '', razonSocial: '', direccionFiscal: '', dni: '', nombreCliente: '' })
   const initialized = useRef(false), submitting = useRef(false)
   const [amount, setAmount] = useState('')
@@ -36,6 +40,7 @@ export default function PaymentModal({ saleId, onClose, onUpdated }) {
     initialized.current = true
     const customer = sale.cliente || {}, name = sale.tipoComprobante?.nombre?.toUpperCase() || ''
     setReceipt(name.includes('FACTURA') ? 'FACTURA' : name.includes('BOLETA') ? 'BOLETA' : 'NOTA_VENTA')
+    setFormat(name.includes('FACTURA') ? 'A4' : '80mm')
     setFiscal({ ruc: /^\d{11}$/.test(customer.numeroDocumento) ? customer.numeroDocumento : '',
       razonSocial: customer.nombresRazonSocial || '', direccionFiscal: customer.direccion || '',
       dni: /^\d{8}$/.test(customer.numeroDocumento) ? customer.numeroDocumento : '', nombreCliente: customer.nombresRazonSocial || '' })
@@ -58,7 +63,7 @@ export default function PaymentModal({ saleId, onClose, onUpdated }) {
   const confirm = async updated => {
     pending.current = null; setUncertain(false); setAmount(''); setReceived(''); setReference('')
     onUpdated(updated)
-    if (updated.estado === 'CERRADA') onClose()
+    if (updated.estado === 'CERRADA') { if (printAfter && updated.comprobante) await print({ type: 'RECEIPT', format, sale: updated }); onClose() }
     else { setNotice('Abono registrado. El saldo se actualizó.'); await refresh() }
   }
   const submit = async event => {
@@ -108,7 +113,9 @@ export default function PaymentModal({ saleId, onClose, onUpdated }) {
               {method === 'efectivo' && <div className="cash-received"><label>Monto recibido (S/)<input type="number" required min={payable || '0.01'} max="99999999.99" step="0.01" value={received} onChange={event => setReceived(event.target.value)} placeholder="0.00" /></label><p className="payment-change" role="status">Vuelto a entregar<strong>S/ {money(Math.max(0, cents(received) - cents(payable)) / 100)}</strong></p></div>}
               <label>Referencia de operación (opcional)<input maxLength={100} value={reference} onChange={event => setReference(event.target.value)} /></label></>}
             {step === 2 && <>
-              <div className="receipt-selector" role="group" aria-label="Tipo de comprobante">{receipts.map(([code, label]) => <button type="button" key={code} aria-pressed={receipt === code} onClick={() => setReceipt(code)}><ReceiptText size={19} />{label}</button>)}</div>
+              <div className="receipt-selector" role="group" aria-label="Tipo de comprobante">{receipts.map(([code, label]) => <button type="button" key={code} aria-pressed={receipt === code} onClick={() => { setReceipt(code); setFormat(code === 'FACTURA' ? 'A4' : '80mm') }}><ReceiptText size={19} />{label}</button>)}</div>
+              <label>Formato de impresión<select value={format} onChange={e => setFormat(e.target.value)}><option value="80mm">Térmico · 80 mm</option><option value="A4">Hoja A4</option></select></label>
+              <label className="print-preference"><input type="checkbox" checked={printAfter} onChange={e => setPrintAfter(e.target.checked)} />Imprimir al emitir el comprobante</label>
               {receipt === 'FACTURA' && <div className="fiscal-fields"><label>RUC<input required inputMode="numeric" pattern="[0-9]{11}" maxLength={11} value={fiscal.ruc} onChange={e => field('ruc', e.target.value.replace(/\D/g, ''))} placeholder="11 dígitos" /></label><label>Razón social<input required maxLength={150} value={fiscal.razonSocial} onChange={e => field('razonSocial', e.target.value)} /></label><label>Dirección fiscal<input required maxLength={255} value={fiscal.direccionFiscal} onChange={e => field('direccionFiscal', e.target.value)} /></label></div>}
               {receipt === 'BOLETA' && <div className="fiscal-fields"><label>DNI {cents(sale.total) > 70000 ? '(obligatorio)' : '(opcional)'}<input required={identified} inputMode="numeric" pattern="[0-9]{8}" maxLength={8} value={fiscal.dni} onChange={e => field('dni', e.target.value.replace(/\D/g, ''))} placeholder="8 dígitos" /></label><label>Nombre del cliente<input required={identified} maxLength={150} value={fiscal.nombreCliente} onChange={e => field('nombreCliente', e.target.value)} /></label><p className="payment-hint">Para boletas mayores a S/ 700, completa DNI y nombre.</p></div>}
               {receipt === 'NOTA_VENTA' && <p className="payment-hint">Ticket de consumo para el cliente, sin datos fiscales obligatorios.</p>}

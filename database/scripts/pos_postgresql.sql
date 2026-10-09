@@ -1,13 +1,15 @@
 -- ============================================================================
--- POS MI TRAMPITA — SCRIPT ÚNICO PARA POSTGRESQL 14+ (VERSIONES 01 A 07)
+-- POS MI TRAMPITA — SCRIPT ÚNICO PARA POSTGRESQL 14+ (VERSIONES 01 A 09)
 --
 -- Base nueva: crear pos_db, conectarse a ella y ejecutar este archivo completo.
 -- Base existente: respaldo previo y ejecutar solo las migraciones pendientes
--- (03 a 07), nunca la sección de instalación.
--- Si ya tiene 04: ejecutar las secciones 05, 06 y 07 de este mismo archivo.
--- Si ya tiene 05: ejecutar las secciones 06 y 07 de este mismo archivo.
--- Si ya tiene 06: ejecutar solo desde el encabezado 07 hasta el final.
--- Si ya tiene 07: no ejecutar ninguna sección; la base ya está actualizada.
+-- (03 a 09), nunca la sección de instalación.
+-- Si ya tiene 04: ejecutar las secciones 05, 06, 07, 08 y 09 de este mismo archivo.
+-- Si ya tiene 05: ejecutar las secciones 06, 07, 08 y 09 de este mismo archivo.
+-- Si ya tiene 06: ejecutar las secciones 07, 08 y 09.
+-- Si ya tiene 07: ejecutar las secciones 08 y 09.
+-- Si ya tiene 08: ejecutar solamente la sección 09.
+-- Si ya tiene 09: no ejecutar ninguna sección; la base ya está actualizada.
 -- Cada sección termina antes del siguiente encabezado numerado.
 -- No repetir migraciones: se protege el inventario contra dobles descuentos.
 -- Backend detenido. Las migraciones 04, 05, 06 y 07 son transaccionales.
@@ -424,4 +426,104 @@ ALTER TABLE detalle_venta
     (motivo_cancelacion IS NOT NULL AND length(trim(motivo_cancelacion))>0 AND cancelado_por IS NOT NULL));
 -- No se modifica stock ni importes: los platos existentes conservan su estado.
 INSERT INTO pos_migraciones(version) VALUES('07_caja_fiscal_cancelaciones');
+COMMIT;
+
+-- 08. TURNOS DE CAJA Y KDS ENRUTADO. Requiere 07; backend detenido.
+BEGIN;
+DO $$ BEGIN
+  IF EXISTS(SELECT 1 FROM pos_migraciones WHERE version='08_turnos_caja_kds_enrutado') THEN
+    RAISE EXCEPTION 'La migración 08 ya fue aplicada';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='07_caja_fiscal_cancelaciones') THEN
+    RAISE EXCEPTION 'Primero aplica la migración 07';
+  END IF;
+END $$;
+LOCK TABLE producto, detalle_venta, pagos_venta IN ACCESS EXCLUSIVE MODE;
+CREATE TABLE sesiones_caja (
+  id_sesion SERIAL PRIMARY KEY, id_empresa INT NOT NULL REFERENCES empresa(id_empresa),
+  empresa_abierta INT, abierto_por INT NOT NULL REFERENCES usuario(id_usuario),
+  cerrado_por INT REFERENCES usuario(id_usuario), fecha_apertura TIMESTAMPTZ NOT NULL,
+  fecha_cierre TIMESTAMPTZ, clave_operacion VARCHAR(36) NOT NULL,
+  monto_inicial NUMERIC(14,2) NOT NULL,
+  total_efectivo NUMERIC(14,2) NOT NULL DEFAULT 0, total_yape NUMERIC(14,2) NOT NULL DEFAULT 0,
+  total_plin NUMERIC(14,2) NOT NULL DEFAULT 0, total_tarjeta NUMERIC(14,2) NOT NULL DEFAULT 0,
+  total_transferencia NUMERIC(14,2) NOT NULL DEFAULT 0, total_yape_plin NUMERIC(14,2) NOT NULL DEFAULT 0,
+  efectivo_declarado NUMERIC(14,2), observaciones VARCHAR(500) NOT NULL DEFAULT '',
+  CONSTRAINT uk_caja_empresa_abierta UNIQUE(empresa_abierta),
+  CONSTRAINT uk_caja_apertura UNIQUE(id_empresa,clave_operacion),
+  CONSTRAINT ck_caja_importes CHECK(monto_inicial>=0 AND total_efectivo>=0 AND total_yape>=0 AND
+    total_plin>=0 AND total_tarjeta>=0 AND total_transferencia>=0 AND total_yape_plin>=0 AND
+    (efectivo_declarado IS NULL OR efectivo_declarado>=0)),
+  CONSTRAINT ck_caja_estado CHECK(
+    (fecha_cierre IS NULL AND empresa_abierta IS NOT NULL AND empresa_abierta=id_empresa AND cerrado_por IS NULL AND efectivo_declarado IS NULL)
+    OR (fecha_cierre IS NOT NULL AND fecha_cierre>=fecha_apertura AND empresa_abierta IS NULL AND cerrado_por IS NOT NULL AND efectivo_declarado IS NOT NULL))
+);
+CREATE INDEX idx_caja_empresa_fecha ON sesiones_caja(id_empresa,fecha_apertura);
+ALTER TABLE pagos_venta ADD COLUMN id_sesion_caja INT REFERENCES sesiones_caja(id_sesion);
+CREATE INDEX idx_pago_sesion_metodo ON pagos_venta(id_sesion_caja,metodo_pago);
+-- Los abonos históricos se conservan sin asignarlos a turnos ficticios.
+ALTER TABLE producto ADD COLUMN area_destino VARCHAR(10) NOT NULL DEFAULT 'COCINA',
+  ADD CONSTRAINT ck_producto_destino CHECK(area_destino IN('COCINA','BAR'));
+UPDATE producto p SET area_destino='BAR' FROM categoria c
+  WHERE p.id_categoria=c.id_categoria AND lower(trim(c.nombre_categoria))='bebidas';
+ALTER TABLE detalle_venta ADD COLUMN area_destino VARCHAR(10) NOT NULL DEFAULT 'COCINA',
+  ADD COLUMN observaciones VARCHAR(255) NOT NULL DEFAULT '',
+  ADD CONSTRAINT ck_detalle_destino CHECK(area_destino IN('COCINA','BAR'));
+-- Las comandas anteriores permanecen en su cola original; solo las nuevas usan el destino del producto.
+CREATE INDEX idx_detalle_estacion ON detalle_venta(area_destino,estado_preparacion,fecha_pedido);
+CREATE INDEX idx_venta_cliente_cobro ON ventas(id_cliente,estado_venta,fecha_cobro);
+INSERT INTO rol(nombre_rol,descripcion) VALUES('BARTENDER','Acceso exclusivo a bar') ON CONFLICT(nombre_rol) DO NOTHING;
+INSERT INTO pos_migraciones(version) VALUES('08_turnos_caja_kds_enrutado');
+COMMIT;
+
+-- 09. MENU PUBLICO Y RECEPCION WEB. Requiere 08; backend detenido.
+BEGIN;
+DO $$ BEGIN
+  IF EXISTS(SELECT 1 FROM pos_migraciones WHERE version='09_menu_publico_pedidos_web') THEN
+    RAISE EXCEPTION 'La migración 09 ya fue aplicada';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='08_turnos_caja_kds_enrutado') THEN
+    RAISE EXCEPTION 'Primero aplica la migración 08';
+  END IF;
+END $$;
+ALTER TABLE producto ADD COLUMN visible_web BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE ventas ADD COLUMN observaciones_pedido VARCHAR(255) NOT NULL DEFAULT '';
+CREATE TABLE tiendas_web (
+  id_empresa INT PRIMARY KEY REFERENCES empresa(id_empresa),
+  slug VARCHAR(60) NOT NULL UNIQUE, activa BOOLEAN NOT NULL DEFAULT FALSE,
+  recojo BOOLEAN NOT NULL DEFAULT TRUE, delivery BOOLEAN NOT NULL DEFAULT TRUE,
+  mensaje VARCHAR(300) NOT NULL DEFAULT '',
+  CONSTRAINT ck_tienda_entrega CHECK(recojo OR delivery)
+);
+CREATE TABLE solicitudes_web (
+  id_solicitud SERIAL PRIMARY KEY, id_empresa INT NOT NULL REFERENCES empresa(id_empresa),
+  clave_operacion VARCHAR(36) NOT NULL, codigo_seguimiento VARCHAR(36) NOT NULL UNIQUE,
+  huella VARCHAR(64) NOT NULL, nombre VARCHAR(150) NOT NULL, dni VARCHAR(8) NOT NULL,
+  telefono VARCHAR(20) NOT NULL, tipo_entrega VARCHAR(10) NOT NULL,
+  direccion VARCHAR(255) NOT NULL DEFAULT '', observaciones VARCHAR(255) NOT NULL DEFAULT '',
+  estado VARCHAR(15) NOT NULL DEFAULT 'PENDIENTE', fecha_creacion TIMESTAMPTZ NOT NULL,
+  subtotal NUMERIC(10,2) NOT NULL, igv NUMERIC(10,2) NOT NULL,
+  total NUMERIC(10,2) NOT NULL, motivo VARCHAR(255) NOT NULL DEFAULT '',
+  id_venta INT UNIQUE REFERENCES ventas(id_venta),
+  CONSTRAINT uk_web_operacion UNIQUE(id_empresa,clave_operacion),
+  CONSTRAINT ck_web_importes CHECK(subtotal>=0 AND igv>=0 AND total=subtotal+igv),
+  CONSTRAINT ck_web_dni CHECK(dni ~ '^[0-9]{8}$'),
+  CONSTRAINT ck_web_entrega CHECK(tipo_entrega='RECOJO' OR (tipo_entrega='DELIVERY' AND LENGTH(TRIM(direccion))>0)),
+  CONSTRAINT ck_web_estado CHECK(
+    (estado='PENDIENTE' AND id_venta IS NULL) OR (estado='ACEPTADO' AND id_venta IS NOT NULL)
+    OR (estado='RECHAZADO' AND id_venta IS NULL AND LENGTH(TRIM(motivo))>0))
+);
+CREATE TABLE solicitud_web_items (
+  id_item SERIAL PRIMARY KEY,
+  id_solicitud INT NOT NULL REFERENCES solicitudes_web(id_solicitud) ON DELETE CASCADE,
+  id_producto INT NOT NULL REFERENCES producto(id_producto), nombre VARCHAR(150) NOT NULL,
+  cantidad INT NOT NULL, precio_base NUMERIC(10,2) NOT NULL,
+  observaciones VARCHAR(255) NOT NULL DEFAULT '',
+  CONSTRAINT ck_web_item CHECK(cantidad BETWEEN 1 AND 20 AND precio_base>=0)
+);
+CREATE INDEX idx_web_pendientes ON solicitudes_web(estado,fecha_creacion);
+CREATE INDEX idx_web_telefono ON solicitudes_web(id_empresa,telefono,estado,fecha_creacion);
+CREATE INDEX idx_web_items_solicitud ON solicitud_web_items(id_solicitud);
+-- No se publican productos ni se activan tiendas sin configuración del ADMIN.
+INSERT INTO pos_migraciones(version) VALUES('09_menu_publico_pedidos_web');
 COMMIT;

@@ -11,6 +11,7 @@ import CashierDashboard from './pages/CashierDashboard'
 import MarketingDashboard from './MarketingDashboard'
 import { permissions, canView, defaultView } from './permissions'
 import KitchenBoard from './components/KitchenBoard'
+import BarBoard from './components/BarBoard'
 import OnlineOrdersBoard from './components/OnlineOrdersBoard'
 
 const resources = {
@@ -28,7 +29,7 @@ const resources = {
 }
 
 const navGroups = [
-  { title: 'Operación', items: [['caja', 'Caja y recepción', BadgeDollarSign], ['ventas', 'Mesas y ventas', ReceiptText], ['online', 'Pedidos online', Globe], ['cocina', 'Cocina', ChefHat]] },
+  { title: 'Operación', items: [['caja', 'Caja y recepción', BadgeDollarSign], ['ventas', 'Mesas y ventas', ReceiptText], ['online', 'Pedidos online', Globe], ['cocina', 'Cocina', ChefHat], ['bar', 'Bar', Store]] },
   { title: 'Gestión', reqAdmin: true, items: [['dashboard', 'Inicio', LayoutDashboard], ['marketing', 'Marketing', BarChart3], ['areas', 'Áreas', Store], ['mesas', 'Mesas', Store], ['productos', 'Productos', Package]] },
   { title: 'Directorio', reqAdmin: true, items: [['clientes', 'Clientes', UsersRound], ['proveedores', 'Proveedores', Truck], ['categorias', 'Categorías', Tags], ['marcas', 'Marcas', Archive]] },
   { title: 'Administración', reqAdmin: true, items: [['usuarios', 'Usuarios', UserRound], ['roles', 'Roles', ShieldCheck], ['configuracion', 'Configuración', Settings2], ['tipos-comprobante', 'Comprobantes', ReceiptText]] },
@@ -75,7 +76,7 @@ function Login({ onLogin }) {
   }
   
   return <main className="login-page">
-    <section className="login-art"><div className="brand-mark"><Store size={20} /> MI TRAMPITA</div><div className="login-quote"><span>01 / POS</span><h1>MI TRAMPITA<br /><em>Trabajo con ritmo.</em></h1><p>Todo para que tu tienda avance.</p></div><div className="art-grid" /></section>
+    <section className="login-art"><div className="brand-mark"><Store size={20} /> MI TRAMPITA</div><div className="login-quote"><span>01 / POS</span><h1>MI TRAMPITA<br /><em>Trabajo con ritmo.</em></h1><p>Mesas, cocina y caja al ritmo del recreo.</p></div><div className="art-grid" /></section>
     <section className="login-panel"><div className="login-form"><div className="mobile-brand"><Store size={20} /> MI TRAMPITA</div><span className="eyebrow">Punto de venta</span><h2>Bienvenido de vuelta</h2><p className="muted">Accede a tu espacio de trabajo.</p><form onSubmit={submit}><label>Usuario<input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Tu nombre de usuario" /></label><label style={{marginTop: '15px'}}>Contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Tu contraseña" /></label>{error && <div className="form-error">{error}</div>}<button className="primary-button full" type="submit" disabled={loading}>{loading ? 'Iniciando sesión...' : 'Entrar'} <ArrowRight size={18} /></button></form><p className="login-note"><Zap size={14} /> Autenticación en vivo contra la base de datos PostgreSQL.</p></div><span className="login-footer">Mi Trampita · 2026</span></section>
   </main>
 }
@@ -83,12 +84,12 @@ function Login({ onLogin }) {
 function Shell({ session, view, setView, mobileNav, setMobileNav, onLogout }) {
   const { isAdmin } = permissions(session);
 
-  return <div className="app-shell"><aside className={`sidebar ${mobileNav ? 'open' : ''}`}><div className="sidebar-top"><div className="brand-mark dark"><Store size={19} /> MI TRAMPITA</div><button className="icon-button close-nav" onClick={() => setMobileNav(false)} aria-label="Cerrar menú"><X size={20} /></button></div><div className="workspace"><span className="workspace-dot" /><span>Mi tienda</span><ChevronRight size={14} /></div><nav>{navGroups.map((group) => {
+  return <div className="app-shell"><aside className={`sidebar ${mobileNav ? 'open' : ''}`}><div className="sidebar-top"><div className="brand-mark dark"><Store size={19} /> MI TRAMPITA</div><button className="icon-button close-nav" onClick={() => setMobileNav(false)} aria-label="Cerrar menú"><X size={20} /></button></div><div className="workspace"><span className="workspace-dot" /><span>Recreo Mi Trampita</span><ChevronRight size={14} /></div><nav>{navGroups.map((group) => {
     if (group.reqAdmin && !isAdmin) return null;
     return <div className="nav-group" key={group.title}><span className="nav-label">{group.title}</span>{group.items.filter(([key]) => canView(session, key)).map(([key, label, Icon]) => <button className={`nav-item ${view === key ? 'active' : ''}`} key={key} onClick={() => setView(key)}><Icon size={17} /><span>{label}</span>{key === 'ventas' && <span className="nav-badge">POS</span>}</button>)}</div>
   })}</nav><div className="sidebar-bottom">
   {isAdmin && <button className="nav-item" onClick={() => setView('configuracion')}><Settings2 size={17} /><span>Configuración</span></button>}
-  <div className="user-card"><div className="avatar">{session.nombreCompleto?.charAt(0).toUpperCase() || 'U'}</div><div><strong title={session.nombreCompleto}>{session.usuario}</strong><small>{isAdmin ? 'Administrador' : session.roles?.includes('COCINERO') ? 'Cocinero' : session.roles?.includes('CAJA') ? 'Caja' : 'Mozo / Ventas'}</small></div><button className="icon-button" onClick={onLogout} title="Cerrar sesión"><LogOut size={16} /></button></div></div></aside>{mobileNav && <button className="scrim" onClick={() => setMobileNav(false)} aria-label="Cerrar menú" />}<main className="main-content"><header className="topbar"><button className="icon-button menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menú"><Menu size={21} /></button><div className="crumb"><Command size={16} /><span>/</span><strong>{view === 'caja' ? 'Caja y recepción' : view === 'dashboard' ? 'Inicio' : view === 'ventas' ? 'Mesas y ventas' : view === 'marketing' ? 'Marketing' : view === 'cocina' ? 'Cocina' : view === 'online' ? 'Pedidos online' : resources[view]?.label}</strong></div><div className="top-actions"><span className="connection"><span /> API conectada</span><button className="icon-button" title="Perfil" onClick={() => { if(isAdmin) setView('usuarios') }}><CircleUserRound size={19} /></button></div></header><div className="content">{view === 'caja' ? <CashierDashboard /> : view === 'dashboard' ? <Dashboard setView={setView} /> : view === 'ventas' ? <Sales session={session} /> : view === 'cocina' ? <KitchenBoard /> : view === 'online' ? <OnlineOrdersBoard session={session} /> : view === 'marketing' && isAdmin ? <MarketingDashboard /> : isAdmin && resources[view] ? <ResourceView key={view} resource={resources[view]} /> : null}</div></main></div>
+  <div className="user-card"><div className="avatar">{session.nombreCompleto?.charAt(0).toUpperCase() || 'U'}</div><div><strong title={session.nombreCompleto}>{session.usuario}</strong><small>{isAdmin ? 'Administrador' : session.roles?.includes('COCINERO') ? 'Cocinero' : session.roles?.includes('BARTENDER') ? 'Bartender' : session.roles?.includes('CAJA') ? 'Caja' : 'Mozo / Ventas'}</small></div><button className="icon-button" onClick={onLogout} title="Cerrar sesión"><LogOut size={16} /></button></div></div></aside>{mobileNav && <button className="scrim" onClick={() => setMobileNav(false)} aria-label="Cerrar menú" />}<main className="main-content"><header className="topbar"><button className="icon-button menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menú"><Menu size={21} /></button><div className="crumb"><Command size={16} /><span>/</span><strong>{view === 'caja' ? 'Caja y recepción' : view === 'dashboard' ? 'Inicio' : view === 'ventas' ? 'Mesas y ventas' : view === 'marketing' ? 'Marketing' : view === 'bar' ? 'Bar' : view === 'cocina' ? 'Cocina' : view === 'online' ? 'Pedidos online' : resources[view]?.label}</strong></div><div className="top-actions"><span className="connection"><span /> API conectada</span><button className="icon-button" title="Perfil" onClick={() => { if(isAdmin) setView('usuarios') }}><CircleUserRound size={19} /></button></div></header><div className="content">{view === 'caja' ? <CashierDashboard session={session} /> : view === 'dashboard' ? <Dashboard setView={setView} /> : view === 'ventas' ? <Sales session={session} /> : view === 'bar' ? <BarBoard /> : view === 'cocina' ? <KitchenBoard /> : view === 'online' ? <OnlineOrdersBoard session={session} /> : view === 'marketing' && isAdmin ? <MarketingDashboard /> : isAdmin && resources[view] ? <ResourceView key={view} resource={resources[view]} /> : null}</div></main></div>
 }
 
 function Dashboard({ setView }) { return <><DashboardLegacy setView={setView} /><RecentSales /></> }
@@ -144,7 +145,7 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
       case 'Comprobantes': base = { nombre: '', serie: '', descripcion: '' }; break
       case 'Áreas': base = { nombre: '', estado: 'ACTIVA' }; break
       case 'Mesas': base = { numero: '', capacidad: 4, areaId: '' }; break
-      case 'Productos': base = { categoriaId: '', marcaId: '', proveedorId: '', codigoBarras: '', nombre: '', descripcion: '', precioCompra: 0, precioVenta: 0, stockActual: 0, stockMinimo: 5 }; break
+      case 'Productos': base = { categoriaId: '', marcaId: '', proveedorId: '', codigoBarras: '', nombre: '', descripcion: '', precioCompra: 0, precioVenta: 0, stockActual: 0, stockMinimo: 5, areaDestino: 'COCINA', visibleWeb: false }; break
       default: base = {}
     }
     if (!item) return base
@@ -172,7 +173,7 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
       ]).then(([c, m, p]) => setRelations(current => ({ ...current, categorias: c, marcas: m, proveedores: p }))).catch(err => setError(err.message))
     }
     if (resource.label === 'Mesas') api.list('/api/areas').then(areas => setRelations(current => ({ ...current, areas }))).catch(err => setError(err.message))
-    if (resource.label === 'Usuarios') api.list('/api/roles').then(roles => setRelations(current => ({ ...current, roles: roles.filter(role => ['ADMIN', 'MOZO', 'CAJA', 'COCINERO'].includes(role.nombre)) }))).catch(err => setError(err.message))
+    if (resource.label === 'Usuarios') api.list('/api/roles').then(roles => setRelations(current => ({ ...current, roles: roles.filter(role => ['ADMIN', 'MOZO', 'CAJA', 'COCINERO', 'BARTENDER'].includes(role.nombre)) }))).catch(err => setError(err.message))
   }, [resource.label])
 
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }))
@@ -206,7 +207,7 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
         precioCompra: Number(form.precioCompra), 
         precioVenta: Number(form.precioVenta), 
         stockActual: Number(form.stockActual), 
-        stockMinimo: Number(form.stockMinimo) 
+        stockMinimo: Number(form.stockMinimo), areaDestino: form.areaDestino, visibleWeb: Boolean(form.visibleWeb)
       } : resource.label === 'Mesas' ? {
         numero: Number(form.numero),
         capacidad: Number(form.capacidad),
@@ -225,7 +226,9 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
   return <div className="modal-backdrop"><section className="modal" style={{maxHeight: '90vh', overflowY: 'auto'}}><div className="modal-head"><div><span className="eyebrow">{item ? 'Modificar registro' : 'Nuevo registro'}</span><h2>{resource.singular}</h2></div><button className="icon-button" onClick={onClose} aria-label="Cerrar"><X size={19} /></button></div><form onSubmit={submit} className="form-grid">
     {fields.map((field) => {
       const isSelect = (resource.label === 'Productos' && ['categoriaId', 'marcaId', 'proveedorId'].includes(field)) || field === 'areaId';
-      if (field === 'rolIds') return <fieldset key={field} className="roles-field"><legend>Permisos del usuario</legend>{relations.roles.map(role => <label key={role.id}><input type="checkbox" checked={form.rolIds.includes(role.id)} onChange={event => update('rolIds', event.target.checked ? role.nombre === 'COCINERO' ? [role.id] : [...form.rolIds.filter(id => relations.roles.find(r => r.id === id)?.nombre !== 'COCINERO'), role.id] : form.rolIds.filter(id => id !== role.id))} />{role.nombre}</label>)}</fieldset>
+      if (field === 'rolIds') return <fieldset key={field} className="roles-field"><legend>Permisos del usuario</legend>{relations.roles.map(role => <label key={role.id}><input type="checkbox" checked={form.rolIds.includes(role.id)} onChange={event => update('rolIds', event.target.checked ? ['COCINERO', 'BARTENDER'].includes(role.nombre) ? [role.id] : [...form.rolIds.filter(id => !['COCINERO', 'BARTENDER'].includes(relations.roles.find(r => r.id === id)?.nombre)), role.id] : form.rolIds.filter(id => id !== role.id))} />{role.nombre}</label>)}</fieldset>
+      if (field === 'visibleWeb') return <label key={field} style={{display:'flex',alignItems:'center',gap:10}}><input type="checkbox" style={{width:18}} checked={Boolean(form.visibleWeb)} onChange={e => update(field, e.target.checked)} />Mostrar en el menú público</label>
+      if (field === 'areaDestino') return <label key={field}>Estación de preparación<select value={form[field]} onChange={e => update(field, e.target.value)}><option value="COCINA">Cocina</option><option value="BAR">Bar</option></select></label>
       const labelText = field.replace(/[A-Z]/g, (letter) => ` ${letter}`).replace(/^./, (letter) => letter.toUpperCase());
       const isRequired = (field === 'direccion' && resource.label === 'Configuración') || ['areaId','nombre', 'codigoBarras', 'nombresRazonSocial', 'numeroDocumento', 'rucDni', 'razonSocial', 'ruc', 'categoriaId', 'proveedorId', 'usuario', 'nombreCompleto', 'serie', 'numero', 'capacidad'].includes(field) || (field === 'contrasena' && !item);
       const isNumber = field.toLowerCase().includes('precio') || field.toLowerCase().includes('stock') || ['numero', 'capacidad'].includes(field);

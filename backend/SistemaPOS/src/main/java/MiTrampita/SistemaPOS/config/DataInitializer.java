@@ -46,13 +46,14 @@ public class DataInitializer implements CommandLineRunner {
             return roles.save(role);
         });
 
-        for (String name : java.util.List.of("MOZO", "CAJA", "COCINERO")) {
+        for (String name : java.util.List.of("MOZO", "CAJA", "COCINERO", "BARTENDER")) {
             if (roles.findByNombreIgnoreCase(name).isEmpty()) {
                 Rol role = new Rol();
                 role.setNombre(name);
                 role.setDescripcion(switch (name) {
                     case "MOZO" -> "Pedidos y comandas";
                     case "CAJA" -> "Cobros y comprobantes";
+                    case "BARTENDER" -> "Preparación de bebidas; acceso exclusivo a bar";
                     default -> "Preparación de pedidos; acceso exclusivo a cocina";
                 });
                 roles.save(role);

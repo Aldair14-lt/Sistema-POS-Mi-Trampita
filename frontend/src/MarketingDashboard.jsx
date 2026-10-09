@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, Cake, RefreshCw, UsersRound } from 'lucide-react'
+import { BarChart3, Cake, RefreshCw, UsersRound, Download } from 'lucide-react'
 import { api } from './api'
 
 const money = (value) => 'S/ ' + Number(value || 0).toFixed(2)
@@ -12,11 +12,24 @@ export default function MarketingDashboard() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadingConsumption, setLoadingConsumption] = useState(false)
+  const [strategic, setStrategic] = useState({ birthdays: [], inactive: [], best: [] })
+  const [audience, setAudience] = useState('todos')
+  const [exporting, setExporting] = useState(false)
+  const exportCsv = async () => {
+    setExporting(true); setError('')
+    try {
+      const blob = await api.download(`/api/marketing/exportar.csv?segmento=${audience}`)
+      const url = URL.createObjectURL(blob), link = document.createElement('a')
+      link.href = url; link.download = `mi-trampita-meta-${audience}.csv`; document.body.appendChild(link); link.click(); link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
+    } catch (err) { setError(err.message) } finally { setExporting(false) }
+  }
   const load = async () => {
     setLoading(true); setError('')
     try {
-      const [dashboard, customerList] = await Promise.all([api.list('/api/marketing'), api.list('/api/clientes')])
+      const [dashboard, customerList, birthdays, inactive, best] = await Promise.all([api.list('/api/marketing'), api.list('/api/clientes'), api.list('/api/marketing/proximos-cumpleaneros'), api.list('/api/marketing/inactivos'), api.list('/api/marketing/mejores')])
       setData(dashboard); setClients(customerList)
+      setStrategic({ birthdays, inactive, best })
     } catch (err) { setError(err.message) } finally { setLoading(false) }
   }
   useEffect(() => { load() }, [])
@@ -48,6 +61,8 @@ export default function MarketingDashboard() {
         <div className="metric"><BarChart3 /><div><span>Clientes con 5 o más visitas</span><strong>{clients.filter(c => c.frecuenciaVisitas >= 5).length}</strong></div></div>
       </div>
       <p className="muted">Una visita equivale a una venta cobrada. Los totales incluyen IGV; los pedidos abiertos no cuentan.</p>
+      <section className="panel recent-panel"><div className="panel-head"><h3>Públicos personalizados</h3><select aria-label="Público para exportar" value={audience} onChange={e => setAudience(e.target.value)}><option value="todos">Todos los clientes con contacto</option><option value="cumpleaneros">Próximos cumpleaños · 30 días</option><option value="inactivos">Inactivos · más de 60 días</option><option value="mejores">Mejores clientes · top 10</option></select></div><button className="primary-button" disabled={exporting} onClick={exportCsv}><Download size={17} />{exporting ? 'Preparando CSV…' : 'Exportar CSV para Facebook Ads'}</button><p className="muted">El archivo incluye correo y teléfono normalizados de clientes con contacto válido.</p></section>
+      <div className="marketing-grid">{[['birthdays', 'Próximos cumpleañeros · 30 días'], ['inactive', 'Clientes inactivos · más de 60 días'], ['best', 'Mejores clientes por consumo']].map(([key, title]) => <section className="panel" key={key}><div className="panel-head"><h3>{title}</h3></div><div className="table-wrap"><table><thead><tr><th>Cliente</th><th>Contacto</th><th>Consumo</th></tr></thead><tbody>{strategic[key].map(c => <tr key={c.id}><td>{c.nombre}{key === 'birthdays' && <small> · {c.fechaNacimiento?.slice(5)}</small>}</td><td>{c.telefono || c.correo || 'Sin contacto'}</td><td>{money(c.totalGastado)}</td></tr>)}</tbody></table>{!strategic[key].length && <p className="empty">Sin clientes en este segmento.</p>}</div></section>)}</div>
       <div className="marketing-grid">
         <section className="panel"><div className="panel-head"><h3>Top 10 clientes frecuentes</h3></div>
           <div className="marketing-ranking">{data.frecuentes.map((client, index) => <button type="button" className="ranking-row" key={client.id} onClick={() => setClientId(String(client.id))}>

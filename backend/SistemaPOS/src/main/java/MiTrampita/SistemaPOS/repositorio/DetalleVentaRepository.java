@@ -14,10 +14,11 @@ public interface DetalleVentaRepository extends JpaRepository<DetalleVenta, Inte
         select d from DetalleVenta d join fetch d.venta v join fetch d.producto
         left join fetch v.mesa
         where d.estadoPreparacion in :estados
+          and d.areaDestino = :area
           and v.estado <> MiTrampita.SistemaPOS.entity.EstadoVenta.ANULADA
         order by d.fechaPedido asc, d.id asc
         """)
-    List<DetalleVenta> findColaCocina(Collection<EstadoPreparacion> estados);
+    List<DetalleVenta> findColaCocina(Collection<EstadoPreparacion> estados, MiTrampita.SistemaPOS.entity.AreaDestino area);
 
     @Query("select d.venta.id from DetalleVenta d where d.id = :id")
     Optional<Integer> findVentaId(Integer id);

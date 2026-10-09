@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.Optional;
 
 public interface ProductoRepository extends JpaRepository<Producto, Integer> {
+    java.util.List<Producto> findByVisibleWebTrueOrderByNombreAsc();
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Producto p where p.id = :id")
     Optional<Producto> findByIdForUpdate(Integer id);

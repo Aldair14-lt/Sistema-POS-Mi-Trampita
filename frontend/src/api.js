@@ -3,7 +3,7 @@ export const API_URL = import.meta.env.VITE_API_URL || ''
 export class ApiError extends Error {
   constructor(message, status) { super(message); this.status = status }
 }
-async function request(path, options = {}) {
+async function request(path, options = {}, responseType = 'json') {
   let response
   try {
     const headers = { 'Content-Type': 'application/json', ...options.headers }
@@ -27,9 +27,12 @@ async function request(path, options = {}) {
     throw new ApiError(message, response.status)
   }
   if (response.status === 204) return null
-  return response.json()
+  if (responseType === 'blob') return response.blob()
+  const body = await response.text()
+  return body ? JSON.parse(body) : null
 }
 export const api = {
+  download: (path) => request(path, {}, 'blob'),
   list: (path) => request(path),
   create: (path, data) => request(path, { method: 'POST', body: JSON.stringify(data) }),
   update: (path, data) => request(path, { method: 'PUT', body: JSON.stringify(data) }),

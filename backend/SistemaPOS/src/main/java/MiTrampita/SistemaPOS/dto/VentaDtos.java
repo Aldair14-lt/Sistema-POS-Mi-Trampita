@@ -40,6 +40,8 @@ public final class VentaDtos {
             @Size(max = 255) String direccion, @Size(max = 20) String telefono,
             @Email @Size(max = 100) String correo, @PastOrPresent LocalDate fechaNacimiento) { }
     public record ItemRequest(@NotNull @Min(1) Integer productoId,
-            @NotNull @Min(1) @Max(100000) Integer cantidad) { }
+            @NotNull @Min(1) @Max(100000) Integer cantidad, @Size(max = 255) String observaciones) {
+        public ItemRequest(Integer productoId, Integer cantidad) { this(productoId, cantidad, null); }
+    }
     public record ActualizarItemsRequest(@NotEmpty @Size(max = 200) List<@NotNull @Valid ItemRequest> items) { }
 }

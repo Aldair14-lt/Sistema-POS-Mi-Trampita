@@ -8,7 +8,7 @@ export default function useOperationEvents(onChange, kitchen = false) {
   const callback = useRef(onChange)
   callback.current = onChange
   useEffect(() => {
-    const path = kitchen ? '/api/cocina/eventos' : '/api/operacion/eventos'
+    const path = kitchen === 'BAR' ? '/api/bar/eventos' : kitchen ? '/api/cocina/eventos' : '/api/operacion/eventos'
     let stream = streams.get(path)
     if (!stream) {
       const source = new EventSource(API_URL + path, { withCredentials: true })

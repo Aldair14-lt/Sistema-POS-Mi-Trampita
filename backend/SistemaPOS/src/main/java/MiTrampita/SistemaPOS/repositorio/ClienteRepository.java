@@ -16,4 +16,12 @@ public interface ClienteRepository extends JpaRepository<Cliente, Integer> {
 
     @org.springframework.data.jpa.repository.Query("select c from Cliente c where month(c.fechaNacimiento) = :mes order by day(c.fechaNacimiento), c.id")
     java.util.List<Cliente> cumpleaneros(int mes);
+    java.util.List<Cliente> findTop10ByTotalGastadoGreaterThanOrderByTotalGastadoDescFrecuenciaVisitasDescIdAsc(java.math.BigDecimal minimo);
+    @org.springframework.data.jpa.repository.Query("""
+        select c from Cliente c where c.id in (
+            select v.cliente.id from Venta v where v.estado = MiTrampita.SistemaPOS.entity.EstadoVenta.CERRADA
+            group by v.cliente.id having max(v.fechaCobro) < :limite
+        ) order by c.totalGastado desc, c.id
+        """)
+    java.util.List<Cliente> inactivos(java.time.OffsetDateTime limite);
 }

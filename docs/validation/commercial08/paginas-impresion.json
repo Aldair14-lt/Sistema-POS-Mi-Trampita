@@ -1,0 +1,17 @@
+{
+  "03-factura-a4": {
+    "pages": 1,
+    "width_mm": 209.89,
+    "height_mm": 297.01
+  },
+  "04-ticket-80mm": {
+    "pages": 1,
+    "width_mm": 80.09,
+    "height_mm": 297.01
+  },
+  "05-cierre-a4": {
+    "pages": 1,
+    "width_mm": 209.89,
+    "height_mm": 297.01
+  }
+}

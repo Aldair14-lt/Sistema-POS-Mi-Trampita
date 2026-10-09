@@ -1,13 +1,15 @@
 -- ============================================================================
--- POS MI TRAMPITA — SCRIPT ÚNICO PARA MYSQL 8.0.16+ (VERSIONES 01 A 07)
+-- POS MI TRAMPITA — SCRIPT ÚNICO PARA MYSQL 8.0.16+ (VERSIONES 01 A 09)
 --
 -- Base nueva: ejecutar el archivo completo; crea y selecciona pos_db.
 -- Base existente: respaldo previo, backend detenido y solo migraciones pendientes
--- (03 a 07), nunca la sección de instalación.
--- Si ya tiene 04: ejecutar las secciones 05, 06 y 07 de este mismo archivo.
--- Si ya tiene 05: ejecutar las secciones 06 y 07 de este mismo archivo.
--- Si ya tiene 06: ejecutar solo desde el encabezado 07 hasta el final.
--- Si ya tiene 07: no ejecutar ninguna sección; la base ya está actualizada.
+-- (03 a 09), nunca la sección de instalación.
+-- Si ya tiene 04: ejecutar las secciones 05, 06, 07, 08 y 09 de este mismo archivo.
+-- Si ya tiene 05: ejecutar las secciones 06, 07, 08 y 09 de este mismo archivo.
+-- Si ya tiene 06: ejecutar las secciones 07, 08 y 09.
+-- Si ya tiene 07: ejecutar las secciones 08 y 09.
+-- Si ya tiene 08: ejecutar solamente la sección 09.
+-- Si ya tiene 09: no ejecutar ninguna sección; la base ya está actualizada.
 -- Cada sección termina antes del siguiente encabezado numerado.
 -- No repetir migraciones: se protege el inventario contra dobles descuentos.
 -- MySQL confirma DDL implícitamente; restaurar el respaldo si falla a medias.
@@ -432,3 +434,113 @@ END$$
 DELIMITER ;
 CALL migrar_pos_07();
 DROP PROCEDURE migrar_pos_07;
+
+-- 08. TURNOS DE CAJA Y KDS ENRUTADO. Requiere 07; backend detenido.
+-- MySQL confirma DDL implícitamente. Respaldar antes; restaurar ante un fallo parcial.
+DROP PROCEDURE IF EXISTS migrar_pos_08;
+DELIMITER $$
+CREATE PROCEDURE migrar_pos_08()
+BEGIN
+  IF EXISTS(SELECT 1 FROM pos_migraciones WHERE version='08_turnos_caja_kds_enrutado') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='La migración 08 ya fue aplicada';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='07_caja_fiscal_cancelaciones') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Primero aplica la migración 07';
+  END IF;
+  CREATE TABLE sesiones_caja (
+    id_sesion INT AUTO_INCREMENT PRIMARY KEY, id_empresa INT NOT NULL,
+    empresa_abierta INT, abierto_por INT NOT NULL, cerrado_por INT,
+    fecha_apertura TIMESTAMP(6) NOT NULL, fecha_cierre TIMESTAMP(6), clave_operacion VARCHAR(36) NOT NULL,
+    monto_inicial DECIMAL(14,2) NOT NULL,
+    total_efectivo DECIMAL(14,2) NOT NULL DEFAULT 0, total_yape DECIMAL(14,2) NOT NULL DEFAULT 0,
+    total_plin DECIMAL(14,2) NOT NULL DEFAULT 0, total_tarjeta DECIMAL(14,2) NOT NULL DEFAULT 0,
+    total_transferencia DECIMAL(14,2) NOT NULL DEFAULT 0, total_yape_plin DECIMAL(14,2) NOT NULL DEFAULT 0,
+    efectivo_declarado DECIMAL(14,2), observaciones VARCHAR(500) NOT NULL DEFAULT '',
+    CONSTRAINT fk_caja_empresa FOREIGN KEY(id_empresa) REFERENCES empresa(id_empresa),
+    CONSTRAINT fk_caja_abierto FOREIGN KEY(abierto_por) REFERENCES usuario(id_usuario),
+    CONSTRAINT fk_caja_cerrado FOREIGN KEY(cerrado_por) REFERENCES usuario(id_usuario),
+    CONSTRAINT uk_caja_empresa_abierta UNIQUE(empresa_abierta),
+    CONSTRAINT uk_caja_apertura UNIQUE(id_empresa,clave_operacion),
+    CONSTRAINT ck_caja_importes CHECK(monto_inicial>=0 AND total_efectivo>=0 AND total_yape>=0 AND
+      total_plin>=0 AND total_tarjeta>=0 AND total_transferencia>=0 AND total_yape_plin>=0 AND
+      (efectivo_declarado IS NULL OR efectivo_declarado>=0)),
+    CONSTRAINT ck_caja_estado CHECK(
+      (fecha_cierre IS NULL AND empresa_abierta IS NOT NULL AND empresa_abierta=id_empresa AND cerrado_por IS NULL AND efectivo_declarado IS NULL)
+      OR (fecha_cierre IS NOT NULL AND fecha_cierre>=fecha_apertura AND empresa_abierta IS NULL AND cerrado_por IS NOT NULL AND efectivo_declarado IS NOT NULL))
+  ) ENGINE=InnoDB;
+  CREATE INDEX idx_caja_empresa_fecha ON sesiones_caja(id_empresa,fecha_apertura);
+  ALTER TABLE pagos_venta ADD COLUMN id_sesion_caja INT,
+    ADD CONSTRAINT fk_pago_sesion FOREIGN KEY(id_sesion_caja) REFERENCES sesiones_caja(id_sesion);
+  CREATE INDEX idx_pago_sesion_metodo ON pagos_venta(id_sesion_caja,metodo_pago);
+  ALTER TABLE producto ADD COLUMN area_destino VARCHAR(10) NOT NULL DEFAULT 'COCINA',
+    ADD CONSTRAINT ck_producto_destino CHECK(area_destino IN('COCINA','BAR'));
+  UPDATE producto p JOIN categoria c ON p.id_categoria=c.id_categoria
+    SET p.area_destino='BAR' WHERE LOWER(TRIM(c.nombre_categoria))='bebidas';
+  ALTER TABLE detalle_venta ADD COLUMN area_destino VARCHAR(10) NOT NULL DEFAULT 'COCINA',
+    ADD COLUMN observaciones VARCHAR(255) NOT NULL DEFAULT '',
+    ADD CONSTRAINT ck_detalle_destino CHECK(area_destino IN('COCINA','BAR'));
+  CREATE INDEX idx_detalle_estacion ON detalle_venta(area_destino,estado_preparacion,fecha_pedido);
+  CREATE INDEX idx_venta_cliente_cobro ON ventas(id_cliente,estado_venta,fecha_cobro);
+  INSERT INTO rol(nombre_rol,descripcion) VALUES('BARTENDER','Acceso exclusivo a bar')
+    ON DUPLICATE KEY UPDATE nombre_rol=VALUES(nombre_rol);
+  INSERT INTO pos_migraciones(version) VALUES('08_turnos_caja_kds_enrutado');
+END$$
+DELIMITER ;
+CALL migrar_pos_08();
+DROP PROCEDURE migrar_pos_08;
+
+-- 09. MENU PUBLICO Y RECEPCION WEB. Requiere 08; backend detenido.
+-- DDL MySQL confirma implícitamente: respaldar antes de actualizar.
+DROP PROCEDURE IF EXISTS migrar_pos_09;
+DELIMITER $$
+CREATE PROCEDURE migrar_pos_09()
+BEGIN
+  IF EXISTS(SELECT 1 FROM pos_migraciones WHERE version='09_menu_publico_pedidos_web') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='La migración 09 ya fue aplicada';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='08_turnos_caja_kds_enrutado') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Primero aplica la migración 08';
+  END IF;
+ALTER TABLE producto ADD COLUMN visible_web BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE ventas ADD COLUMN observaciones_pedido VARCHAR(255) NOT NULL DEFAULT '';
+CREATE TABLE tiendas_web (
+  id_empresa INT PRIMARY KEY, FOREIGN KEY(id_empresa) REFERENCES empresa(id_empresa),
+  slug VARCHAR(60) NOT NULL UNIQUE, activa BOOLEAN NOT NULL DEFAULT FALSE,
+  recojo BOOLEAN NOT NULL DEFAULT TRUE, delivery BOOLEAN NOT NULL DEFAULT TRUE,
+  mensaje VARCHAR(300) NOT NULL DEFAULT '',
+  CONSTRAINT ck_tienda_entrega CHECK(recojo OR delivery)
+) ENGINE=InnoDB;
+CREATE TABLE solicitudes_web (
+  id_solicitud INT AUTO_INCREMENT PRIMARY KEY, id_empresa INT NOT NULL, FOREIGN KEY(id_empresa) REFERENCES empresa(id_empresa),
+  clave_operacion VARCHAR(36) NOT NULL, codigo_seguimiento VARCHAR(36) NOT NULL UNIQUE,
+  huella VARCHAR(64) NOT NULL, nombre VARCHAR(150) NOT NULL, dni VARCHAR(8) NOT NULL,
+  telefono VARCHAR(20) NOT NULL, tipo_entrega VARCHAR(10) NOT NULL,
+  direccion VARCHAR(255) NOT NULL DEFAULT '', observaciones VARCHAR(255) NOT NULL DEFAULT '',
+  estado VARCHAR(15) NOT NULL DEFAULT 'PENDIENTE', fecha_creacion TIMESTAMP(6) NOT NULL,
+  subtotal DECIMAL(10,2) NOT NULL, igv DECIMAL(10,2) NOT NULL,
+  total DECIMAL(10,2) NOT NULL, motivo VARCHAR(255) NOT NULL DEFAULT '',
+  id_venta INT UNIQUE, FOREIGN KEY(id_venta) REFERENCES ventas(id_venta),
+  CONSTRAINT uk_web_operacion UNIQUE(id_empresa,clave_operacion),
+  CONSTRAINT ck_web_importes CHECK(subtotal>=0 AND igv>=0 AND total=subtotal+igv),
+  CONSTRAINT ck_web_dni CHECK(REGEXP_LIKE(dni,'^[0-9]{8}$')),
+  CONSTRAINT ck_web_entrega CHECK(tipo_entrega='RECOJO' OR (tipo_entrega='DELIVERY' AND LENGTH(TRIM(direccion))>0)),
+  CONSTRAINT ck_web_estado CHECK(
+    (estado='PENDIENTE' AND id_venta IS NULL) OR (estado='ACEPTADO' AND id_venta IS NOT NULL)
+    OR (estado='RECHAZADO' AND id_venta IS NULL AND LENGTH(TRIM(motivo))>0))
+) ENGINE=InnoDB;
+CREATE TABLE solicitud_web_items (
+  id_item INT AUTO_INCREMENT PRIMARY KEY,
+  id_solicitud INT NOT NULL, FOREIGN KEY(id_solicitud) REFERENCES solicitudes_web(id_solicitud) ON DELETE CASCADE,
+  id_producto INT NOT NULL, FOREIGN KEY(id_producto) REFERENCES producto(id_producto), nombre VARCHAR(150) NOT NULL,
+  cantidad INT NOT NULL, precio_base DECIMAL(10,2) NOT NULL,
+  observaciones VARCHAR(255) NOT NULL DEFAULT '',
+  CONSTRAINT ck_web_item CHECK(cantidad BETWEEN 1 AND 20 AND precio_base>=0)
+) ENGINE=InnoDB;
+CREATE INDEX idx_web_pendientes ON solicitudes_web(estado,fecha_creacion);
+CREATE INDEX idx_web_telefono ON solicitudes_web(id_empresa,telefono,estado,fecha_creacion);
+CREATE INDEX idx_web_items_solicitud ON solicitud_web_items(id_solicitud);
+  INSERT INTO pos_migraciones(version) VALUES('09_menu_publico_pedidos_web');
+END$$
+DELIMITER ;
+CALL migrar_pos_09();
+DROP PROCEDURE migrar_pos_09;

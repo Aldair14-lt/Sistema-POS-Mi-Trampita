@@ -20,17 +20,29 @@ public class KitchenService {
 
     @Transactional(readOnly = true)
     public List<KitchenItemResponse> cola() {
-        return detalles.findColaCocina(List.of(EstadoPreparacion.PENDIENTE, EstadoPreparacion.PREPARANDO, EstadoPreparacion.LISTO))
+        return cola(AreaDestino.COCINA);
+    }
+
+    @Transactional(readOnly = true)
+    public List<KitchenItemResponse> cola(AreaDestino area) {
+        return detalles.findColaCocina(List.of(EstadoPreparacion.PENDIENTE, EstadoPreparacion.PREPARANDO, EstadoPreparacion.LISTO), area)
                 .stream().map(KitchenItemResponse::from).toList();
     }
 
     @Transactional
     public KitchenItemResponse actualizar(Integer id, UpdateItemStatusRequest request, boolean entrega) {
+        return actualizar(id, request, entrega, entrega ? null : AreaDestino.COCINA);
+    }
+
+    @Transactional
+    public KitchenItemResponse actualizar(Integer id, UpdateItemStatusRequest request, boolean entrega, AreaDestino area) {
         Integer ventaId = detalles.findVentaId(id).orElseThrow(() -> missing());
         // Todos los cambios de la comanda toman primero este bloqueo, igual que pagos y cierre.
         Venta venta = ventas.findByIdForUpdate(ventaId).orElseThrow(() -> missing());
         if (venta.getEstado() == EstadoVenta.ANULADA) throw conflict("La venta está anulada");
         DetalleVenta detalle = detalles.findById(id).orElseThrow(() -> missing());
+        if (!entrega && detalle.getAreaDestino() != area)
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "El ítem pertenece a otra estación de preparación");
         EstadoPreparacion actual = detalle.getEstadoPreparacion();
         EstadoPreparacion siguiente = request.estado();
         if (entrega && siguiente != EstadoPreparacion.SERVIDO)
