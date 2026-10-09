@@ -1,0 +1,119 @@
+{
+  "passed": true,
+  "date": "2026-10-09",
+  "timezone": "America/Lima",
+  "java": {
+    "tests": 67,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frontend": {
+    "tests": 9,
+    "failures": 0,
+    "production_build": true
+  },
+  "maven_package": true,
+  "engines": {
+    "postgresql": {
+      "database": "pos_kds_qa_integral_pg_20261009a_full",
+      "startup_validate": true,
+      "checks": {
+        "schema": {
+          "passed": true
+        },
+        "http": {
+          "passed": true
+        },
+        "public": {
+          "passed": true
+        },
+        "seed_helper": {
+          "passed": true,
+          "existing_rows_preserved": true,
+          "added_rows": 0
+        }
+      },
+      "catalog_http_requests": 230,
+      "browser_suites": {
+        "passwords": {
+          "passed": true,
+          "report": "postgresql/passwords/resultado.json"
+        },
+        "commercial": {
+          "passed": true,
+          "report": "postgresql/commercial/resultado.json"
+        },
+        "public-menu": {
+          "passed": true,
+          "report": "postgresql/public-menu/resultado.json"
+        },
+        "receipts": {
+          "passed": true,
+          "report": "postgresql/receipts/resultado.json"
+        },
+        "audit": {
+          "passed": true,
+          "report": "postgresql/audit/resultado.json"
+        },
+        "catalogs-ui": {
+          "passed": true,
+          "report": "postgresql/catalogs-ui/resultado.json"
+        }
+      }
+    },
+    "mysql": {
+      "database": "pos_kds_qa_integral_mysql_20261009a_full",
+      "startup_validate": true,
+      "checks": {
+        "schema": {
+          "passed": true
+        },
+        "http": {
+          "passed": true
+        },
+        "public": {
+          "passed": true
+        },
+        "seed_helper": {
+          "passed": true,
+          "existing_rows_preserved": true,
+          "added_rows": 0
+        }
+      },
+      "catalog_http_requests": 230,
+      "browser_suites": {
+        "passwords": {
+          "passed": true,
+          "report": "mysql/passwords/resultado.json"
+        },
+        "commercial": {
+          "passed": true,
+          "report": "mysql/commercial/resultado.json"
+        },
+        "public-menu": {
+          "passed": true,
+          "report": "mysql/public-menu/resultado.json"
+        },
+        "receipts": {
+          "passed": true,
+          "report": "mysql/receipts/resultado.json"
+        },
+        "audit": {
+          "passed": true,
+          "report": "mysql/audit/resultado.json"
+        },
+        "catalogs-ui": {
+          "passed": true,
+          "report": "mysql/catalogs-ui/resultado.json"
+        }
+      }
+    }
+  },
+  "evidence_files": {
+    ".png": 54,
+    ".pdf": 8,
+    ".csv": 2
+  },
+  "runtime_business_changes_required": false
+}

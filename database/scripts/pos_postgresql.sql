@@ -1,16 +1,17 @@
 -- ============================================================================
--- POS MI TRAMPITA — SCRIPT ÚNICO PARA POSTGRESQL 14+ (VERSIONES 01 A 10)
+-- POS MI TRAMPITA — SCRIPT ÚNICO PARA POSTGRESQL 14+ (VERSIONES 01 A 11 + DATOS DE EJEMPLO)
 --
 -- Base nueva: crear pos_db, conectarse a ella y ejecutar este archivo completo.
 -- Base existente: respaldo previo y ejecutar solo las migraciones pendientes
--- (03 a 10), nunca la sección de instalación.
+-- (03 a 11), nunca la sección de instalación.
 -- Si ya tiene 04: ejecutar las secciones 05, 06, 07, 08, 09 y 10 de este mismo archivo.
 -- Si ya tiene 05: ejecutar las secciones 06, 07, 08, 09 y 10 de este mismo archivo.
 -- Si ya tiene 06: ejecutar las secciones 07, 08, 09 y 10.
 -- Si ya tiene 07: ejecutar las secciones 08, 09 y 10.
 -- Si ya tiene 08: ejecutar las secciones 09 y 10.
 -- Si ya tiene 09: ejecutar solamente la sección 10.
--- Si ya tiene 10: no ejecutar ninguna sección; la base ya está actualizada.
+-- Si ya tiene 10: ejecutar solamente 11. Si ya tiene 11: no repetir migraciones.
+-- Los datos de ejemplo están en 12; se pueden cargar por separado sin duplicarlos.
 -- Cada sección termina antes del siguiente encabezado numerado.
 -- No repetir migraciones: se protege el inventario contra dobles descuentos.
 -- Backend detenido. Las migraciones 04, 05, 06 y 07 son transaccionales.
@@ -565,4 +566,394 @@ ALTER TABLE ventas ALTER COLUMN id_cliente DROP NOT NULL;
 ALTER TABLE ventas ADD CONSTRAINT ck_venta_cliente_local CHECK(id_cliente IS NOT NULL OR origen_pedido='LOCAL');
 -- Se preservan clientes, comprobantes históricos, stock y pagos. No se inventan documentos.
 INSERT INTO pos_migraciones(version) VALUES('11_ventas_sin_identificacion');
+COMMIT;
+
+-- 12. DATOS DE EJEMPLO. Requiere 11; carga opcional y repetible sobre una base existente.
+-- Instalación nueva: este bloque se ejecuta al final del archivo completo.
+-- Base existente: respaldo previo, backend detenido y ejecutar solamente este bloque.
+-- Solo agrega lo faltante; no cambia usuarios, contraseñas, stock ni registros existentes.
+-- Empresa, clientes, documentos, contactos y precios son ficticios de demostración.
+-- Configurar los datos reales de la empresa antes de emitir comprobantes reales.
+-- No genera ventas, pagos, comprobantes emitidos ni tiendas públicas.
+BEGIN;
+DO $$ BEGIN
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='11_ventas_sin_identificacion') THEN
+    RAISE EXCEPTION 'Primero aplica la migración 11';
+  END IF;
+END $$;
+LOCK TABLE categoria,marca,proveedor,clientes,empresa,areas,mesas,producto,tipo_comprobante
+  IN SHARE ROW EXCLUSIVE MODE;
+
+INSERT INTO categoria(nombre_categoria,descripcion)
+SELECT 'Comidas','Platos y alimentos preparados'
+WHERE NOT EXISTS(SELECT 1 FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Comidas'));
+
+INSERT INTO categoria(nombre_categoria,descripcion)
+SELECT 'Bebidas','Bebidas frías y calientes'
+WHERE NOT EXISTS(SELECT 1 FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Bebidas'));
+
+INSERT INTO categoria(nombre_categoria,descripcion)
+SELECT 'Entradas','Entradas y porciones para compartir'
+WHERE NOT EXISTS(SELECT 1 FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Entradas'));
+
+INSERT INTO categoria(nombre_categoria,descripcion)
+SELECT 'Parrillas','Carnes y platos a la parrilla'
+WHERE NOT EXISTS(SELECT 1 FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Parrillas'));
+
+INSERT INTO categoria(nombre_categoria,descripcion)
+SELECT 'Postres','Postres individuales'
+WHERE NOT EXISTS(SELECT 1 FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Postres'));
+
+INSERT INTO categoria(nombre_categoria,descripcion)
+SELECT 'Combos','Combos de comida; bebidas adicionales por separado'
+WHERE NOT EXISTS(SELECT 1 FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Combos'));
+
+INSERT INTO marca(nombre_marca)
+SELECT 'Sin marca'
+WHERE NOT EXISTS(SELECT 1 FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Sin marca'));
+
+INSERT INTO marca(nombre_marca)
+SELECT 'Mi Trampita'
+WHERE NOT EXISTS(SELECT 1 FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita'));
+
+INSERT INTO marca(nombre_marca)
+SELECT 'Bebidas Demo'
+WHERE NOT EXISTS(SELECT 1 FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Bebidas Demo'));
+
+INSERT INTO marca(nombre_marca)
+SELECT 'Postres Demo'
+WHERE NOT EXISTS(SELECT 1 FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Postres Demo'));
+
+INSERT INTO proveedor(ruc_dni,razon_social,telefono,correo)
+SELECT '20999999001','DEMO - Abastos y carnes','900000001','abastos@example.com'
+WHERE NOT EXISTS(SELECT 1 FROM proveedor WHERE ruc_dni='20999999001');
+
+INSERT INTO proveedor(ruc_dni,razon_social,telefono,correo)
+SELECT '20999999002','DEMO - Distribuidora de bebidas','900000002','bebidas@example.com'
+WHERE NOT EXISTS(SELECT 1 FROM proveedor WHERE ruc_dni='20999999002');
+
+INSERT INTO proveedor(ruc_dni,razon_social,telefono,correo)
+SELECT '20999999003','DEMO - Panadería y postres','900000003','postres@example.com'
+WHERE NOT EXISTS(SELECT 1 FROM proveedor WHERE ruc_dni='20999999003');
+
+INSERT INTO clientes(numero_documento,nombres_razon_social,direccion,telefono,correo,fecha_nacimiento)
+SELECT '90000001','DEMO - Ana Torres','Dirección ficticia 101','900000101','ana@example.com','1995-03-15'
+WHERE NOT EXISTS(SELECT 1 FROM clientes WHERE numero_documento='90000001');
+
+INSERT INTO clientes(numero_documento,nombres_razon_social,direccion,telefono,correo,fecha_nacimiento)
+SELECT '90000002','DEMO - Luis Ramos','Dirección ficticia 102','900000102','luis@example.com','1990-07-22'
+WHERE NOT EXISTS(SELECT 1 FROM clientes WHERE numero_documento='90000002');
+
+INSERT INTO clientes(numero_documento,nombres_razon_social,direccion,telefono,correo,fecha_nacimiento)
+SELECT '90000003','DEMO - María Flores','Dirección ficticia 103','900000103','maria@example.com','1998-10-09'
+WHERE NOT EXISTS(SELECT 1 FROM clientes WHERE numero_documento='90000003');
+
+INSERT INTO clientes(numero_documento,nombres_razon_social,direccion,telefono,correo,fecha_nacimiento)
+SELECT '90000004','DEMO - Carlos Mendoza','Dirección ficticia 104','900000104','carlos@example.com','1987-12-10'
+WHERE NOT EXISTS(SELECT 1 FROM clientes WHERE numero_documento='90000004');
+
+INSERT INTO clientes(numero_documento,nombres_razon_social,direccion,telefono,correo,fecha_nacimiento)
+SELECT '90000005','DEMO - Rosa Quispe','Dirección ficticia 105','900000105','rosa@example.com','1993-05-28'
+WHERE NOT EXISTS(SELECT 1 FROM clientes WHERE numero_documento='90000005');
+
+INSERT INTO clientes(numero_documento,nombres_razon_social,direccion,telefono,correo,fecha_nacimiento)
+SELECT '90000006','DEMO - Pedro García','Dirección ficticia 106','900000106','pedro@example.com','2000-01-18'
+WHERE NOT EXISTS(SELECT 1 FROM clientes WHERE numero_documento='90000006');
+
+INSERT INTO empresa(ruc,razon_social,nombre_comercial,direccion,telefono,correo)
+SELECT '20999999991','DEMO - Restaurante Mi Trampita','Mi Trampita - Demostración','Dirección ficticia - configurar los datos reales antes de emitir comprobantes','900000000','mitrampita@example.com'
+WHERE NOT EXISTS(SELECT 1 FROM empresa WHERE 1=1);
+
+INSERT INTO tipo_comprobante(nombre_tipo,serie,descripcion)
+SELECT 'BOLETA','B001','Boleta de venta'
+WHERE NOT EXISTS(SELECT 1 FROM tipo_comprobante WHERE LOWER(TRIM(nombre_tipo))=LOWER('BOLETA') AND serie='B001');
+
+INSERT INTO tipo_comprobante(nombre_tipo,serie,descripcion)
+SELECT 'FACTURA','F001','Factura de venta'
+WHERE NOT EXISTS(SELECT 1 FROM tipo_comprobante WHERE LOWER(TRIM(nombre_tipo))=LOWER('FACTURA') AND serie='F001');
+
+INSERT INTO tipo_comprobante(nombre_tipo,serie,descripcion)
+SELECT 'NOTA DE VENTA','NV01','Comprobante interno'
+WHERE NOT EXISTS(SELECT 1 FROM tipo_comprobante WHERE LOWER(TRIM(nombre_tipo))=LOWER('NOTA DE VENTA') AND serie='NV01');
+
+INSERT INTO areas(nombre)
+SELECT 'Salón Principal'
+WHERE NOT EXISTS(SELECT 1 FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Salón Principal'));
+
+INSERT INTO areas(nombre)
+SELECT 'Terraza'
+WHERE NOT EXISTS(SELECT 1 FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Terraza'));
+
+INSERT INTO areas(nombre)
+SELECT 'Zona Recreacional'
+WHERE NOT EXISTS(SELECT 1 FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Zona Recreacional'));
+
+INSERT INTO areas(nombre)
+SELECT 'Piscina'
+WHERE NOT EXISTS(SELECT 1 FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Piscina'));
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 1,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Salón Principal'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=1);
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 2,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Salón Principal'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=2);
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 3,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Salón Principal'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=3);
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 4,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Terraza'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=4);
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 5,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Terraza'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=5);
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 6,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Terraza'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=6);
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 7,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Zona Recreacional'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=7);
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 8,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Zona Recreacional'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=8);
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 9,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Zona Recreacional'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=9);
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 10,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Piscina'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=10);
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 11,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Piscina'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=11);
+
+INSERT INTO mesas(numero,capacidad,estado,area_id)
+SELECT 12,4,'LIBRE',(SELECT MIN(id) FROM areas WHERE LOWER(TRIM(nombre))=LOWER('Piscina'))
+WHERE NOT EXISTS(SELECT 1 FROM mesas WHERE numero=12);
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Comidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-COM-001','Arroz con pollo','DEMO: Porción de arroz con pollo y ensalada',8.00,16.00,40,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-COM-001');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Comidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-COM-002','Lomo saltado','DEMO: Carne salteada con papas y arroz',12.00,25.00,35,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-COM-002');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Comidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-COM-003','Ají de gallina','DEMO: Ají de gallina con arroz y papa',8.50,18.00,30,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-COM-003');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Comidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-COM-004','Tallarin saltado de pollo','DEMO: Tallarines salteados con pollo y verduras',9.00,19.00,30,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-COM-004');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Comidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-COM-005','Milanesa de pollo','DEMO: Pollo empanizado con papas y ensalada',9.50,20.00,30,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-COM-005');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Entradas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-ENT-001','Papa a la huancaína','DEMO: Papa con salsa huancaína',4.00,9.00,35,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-ENT-001');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Entradas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-ENT-002','Tequeños de queso','DEMO: Porción de seis tequeños',5.00,12.00,30,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-ENT-002');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Entradas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-ENT-003','Porción de papas fritas','DEMO: Porción individual de papas fritas',3.00,7.00,50,10,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-ENT-003');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Parrillas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-PAR-001','Pollo a la parrilla','DEMO: Pollo a la parrilla con guarnición',12.00,24.00,25,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-PAR-001');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Parrillas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-PAR-002','Chuleta a la parrilla','DEMO: Chuleta con papas y ensalada',14.00,28.00,20,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-PAR-002');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Parrillas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-PAR-003','Anticuchos','DEMO: Dos palitos de anticucho con papa',8.00,18.00,25,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-PAR-003');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Combos')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-CBO-001','Combo hamburguesa y papas','DEMO: Hamburguesa de carne con papas; bebida por separado',8.00,17.00,35,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-CBO-001');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Combos')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999001'),
+  'DEMO-CBO-002','Combo salchipapa especial','DEMO: Papas, salchicha y pollo; bebida por separado',7.00,15.00,35,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-CBO-002');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Bebidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Bebidas Demo')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999002'),
+  'DEMO-BEB-001','Agua sin gas 625 ml','DEMO: Botella individual de agua',1.20,3.00,100,15,0,'BAR',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-BEB-001');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Bebidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Bebidas Demo')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999002'),
+  'DEMO-BEB-002','Gaseosa personal 500 ml','DEMO: Gaseosa en botella personal',2.00,5.00,80,15,0,'BAR',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-BEB-002');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Bebidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Bebidas Demo')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999002'),
+  'DEMO-BEB-003','Gaseosa familiar 1.5 L','DEMO: Botella para compartir',5.50,10.00,40,8,0,'BAR',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-BEB-003');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Bebidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999002'),
+  'DEMO-BEB-004','Chicha morada vaso','DEMO: Vaso de chicha morada de la casa',1.50,4.00,70,10,0,'BAR',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-BEB-004');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Bebidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999002'),
+  'DEMO-BEB-005','Chicha morada jarra','DEMO: Jarra de un litro',4.00,12.00,35,5,0,'BAR',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-BEB-005');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Bebidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999002'),
+  'DEMO-BEB-006','Limonada vaso','DEMO: Vaso de limonada preparada',1.50,4.00,60,10,0,'BAR',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-BEB-006');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Bebidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Mi Trampita')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999002'),
+  'DEMO-BEB-007','Café americano','DEMO: Taza de café caliente',1.80,5.00,50,10,0,'BAR',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-BEB-007');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Bebidas')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Sin marca')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999002'),
+  'DEMO-BEB-008','Infusión','DEMO: Té, manzanilla o anís',0.80,3.00,60,10,0,'BAR',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-BEB-008');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Postres')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Postres Demo')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999003'),
+  'DEMO-POS-001','Flan casero','DEMO: Porción individual de flan',2.50,6.00,25,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-POS-001');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Postres')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Postres Demo')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999003'),
+  'DEMO-POS-002','Torta de chocolate','DEMO: Porción de torta de chocolate',4.00,9.00,20,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-POS-002');
+
+INSERT INTO producto(id_categoria,id_marca,id_proveedor,codigo_barras,nombre_producto,descripcion,
+  precio_compra,precio_venta,stock_actual,stock_minimo,version,area_destino,visible_web)
+SELECT
+  (SELECT MIN(id_categoria) FROM categoria WHERE LOWER(TRIM(nombre_categoria))=LOWER('Postres')),
+  (SELECT MIN(id_marca) FROM marca WHERE LOWER(TRIM(nombre_marca))=LOWER('Postres Demo')),
+  (SELECT MIN(id_proveedor) FROM proveedor WHERE ruc_dni='20999999003'),
+  'DEMO-POS-003','Helado individual','DEMO: Copa individual de helado',2.00,5.00,30,5,0,'COCINA',FALSE
+WHERE NOT EXISTS(SELECT 1 FROM producto WHERE codigo_barras='DEMO-POS-003');
+
 COMMIT;

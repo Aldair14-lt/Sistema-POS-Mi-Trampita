@@ -1,0 +1,1166 @@
+{
+  "passed": true,
+  "url": "http://127.0.0.1:19090",
+  "requests": 230,
+  "modules": [
+    "catálogos CRUD",
+    "productos e inventario",
+    "áreas y mesas",
+    "marketing y CSV",
+    "usuarios, estados y roles",
+    "sesión, CSRF y logout",
+    "datos SQL de ejemplo"
+  ],
+  "checks": [
+    {
+      "method": "GET",
+      "path": "/api/productos",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/roles",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/usuarios",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/productos",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/categorias",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/categorias",
+      "status": 403
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/categorias",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/categorias",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/categorias/9",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/categorias/2147483647",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/marcas",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/marcas",
+      "status": 403
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/marcas",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/marcas",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/marcas/6",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/marcas/2147483647",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/proveedores",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/proveedores",
+      "status": 403
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/proveedores",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/proveedores",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/proveedores/11",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/proveedores/2147483647",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/clientes",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/clientes",
+      "status": 403
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/clientes",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/clientes",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/clientes/14",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/clientes/2147483647",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/configuracion",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/configuracion",
+      "status": 403
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/configuracion",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/configuracion",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/configuracion/8",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/configuracion/2147483647",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/tipos-comprobante",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/tipos-comprobante",
+      "status": 403
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/tipos-comprobante",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/tipos-comprobante",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/tipos-comprobante/5",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/tipos-comprobante/2147483647",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/clientes/14",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/clientes/14",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/clientes",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/productos",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/productos",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/productos",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/productos",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/productos",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/productos",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/productos/44",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/productos",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/categorias/9",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/marcas/6",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/proveedores/11",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/productos/44",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/productos/44",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/productos/44",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/productos/44",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/areas",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/areas",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/mesas",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/mesas",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/mesas",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/mesas",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/mesas",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/mesas?areaId=10",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/mesas",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/mesas/21",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/areas/10",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/mesas/21/abrir",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/mesas/21",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/areas/10",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/mesas/21",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/mesas/21/liberar",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/areas/10",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/mesas/21/abrir",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/areas/10",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/frecuentes",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/cumpleaneros?mes=10",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/proximos-cumpleaneros?dias=30",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/inactivos?dias=60",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/mejores",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/clientes/14/consumo",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/cumpleaneros?mes=13",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/proximos-cumpleaneros?dias=0",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/inactivos?dias=-1",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/exportar.csv?segmento=invalido",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/exportar.csv?segmento=todos",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/exportar.csv?segmento=cumpleaneros",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/exportar.csv?segmento=inactivos",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing/exportar.csv?segmento=mejores",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/usuarios",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/usuarios",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/usuarios",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/usuarios",
+      "status": 409
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/pos/clientes",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/pos/configuracion",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/usuarios",
+      "status": 403
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketing",
+      "status": 403
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/usuarios/11",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/usuarios/11",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/api/usuarios/11",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/caja/resumen",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/productos/44",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/productos/44",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/mesas/21",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/mesas/21",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/areas/10",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/areas/10",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/usuarios/11",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/usuarios/11",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/tipos-comprobante/5",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/tipos-comprobante/5",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/configuracion/8",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/configuracion/8",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/clientes/14",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/clientes/14",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/proveedores/11",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/proveedores/11",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/marcas/6",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/marcas/6",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/categorias/9",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/categorias/9",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/productos/44",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/productos",
+      "status": 200
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "checked": [
+    "Categorías: crear, buscar y editar",
+    "Marcas: crear, buscar y editar",
+    "Proveedores: crear, buscar y editar",
+    "Clientes: crear, buscar y editar",
+    "Configuración: crear, buscar y editar",
+    "Comprobantes: crear, buscar y editar",
+    "Áreas: crear, buscar y editar",
+    "Mesas: crear, buscar y editar",
+    "Productos: crear, buscar y editar",
+    "Productos: eliminar",
+    "Mesas: eliminar",
+    "Áreas: eliminar",
+    "Comprobantes: eliminar",
+    "Configuración: eliminar",
+    "Clientes: eliminar",
+    "Proveedores: eliminar",
+    "Marcas: eliminar",
+    "Categorías: eliminar"
+  ],
+  "errors": []
+}
