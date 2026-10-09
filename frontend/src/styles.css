@@ -1119,9 +1119,17 @@ tbody tr:hover {
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
+    height: 100vh;
+    height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
     z-index: 10;
     transform: translateX(-100%);
     transition: transform 0.25s;
+  }
+  .sidebar > * {
+    flex-shrink: 0;
   }
   .sidebar.open {
     transform: translateX(0);
