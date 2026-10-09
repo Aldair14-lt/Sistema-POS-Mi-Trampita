@@ -1038,6 +1038,8 @@ tbody tr:hover {
 }
 .checkout-form input:focus,
 .checkout-form select:focus { border-color: var(--green); }
+.checkout-form .customer-identification { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; }
+.checkout-form .customer-identification input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--green); }
 .inline-fields {
   display: grid;
   grid-template-columns: 1fr 1.4fr;

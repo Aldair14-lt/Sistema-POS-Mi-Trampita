@@ -572,3 +572,46 @@ END$$
 DELIMITER ;
 CALL migrar_pos_10();
 DROP PROCEDURE migrar_pos_10;
+
+-- 11. VENTAS LOCALES SIN IDENTIFICACION. Requiere 10; respaldo y backend detenido.
+-- El DDL MySQL confirma implícitamente; conservar el respaldo antes de migrar.
+DROP PROCEDURE IF EXISTS migrar_pos_11;
+DELIMITER $$
+CREATE PROCEDURE migrar_pos_11()
+BEGIN
+  IF EXISTS(SELECT 1 FROM pos_migraciones WHERE version='11_ventas_sin_identificacion') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='La migración 11 ya fue aplicada';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='10_comandas_idempotentes') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Primero aplica la migración 10';
+  END IF;
+  ALTER TABLE ventas MODIFY COLUMN id_cliente INT NULL;
+END$$
+DELIMITER ;
+CALL migrar_pos_11();
+-- MySQL no admite CHECK sobre esta FK con ON UPDATE CASCADE. Se conserva la FK.
+DELIMITER $$
+CREATE TRIGGER validar_cliente_venta_insert BEFORE INSERT ON ventas FOR EACH ROW
+BEGIN
+  IF NEW.id_cliente IS NULL AND NEW.origen_pedido <> 'LOCAL' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Pedidos externos requieren cliente';
+  END IF;
+END$$
+CREATE TRIGGER validar_cliente_venta_update BEFORE UPDATE ON ventas FOR EACH ROW
+BEGIN
+  DECLARE cliente_existente INT DEFAULT NULL;
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET cliente_existente = NULL;
+  IF NEW.id_cliente IS NULL AND NEW.origen_pedido <> 'LOCAL' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Pedidos externos requieren cliente';
+  END IF;
+  -- Valida y bloquea la referencia también al identificar una cuenta antes anónima.
+  IF OLD.id_cliente IS NULL AND NEW.id_cliente IS NOT NULL THEN
+    SELECT id_cliente INTO cliente_existente FROM clientes WHERE id_cliente=NEW.id_cliente FOR SHARE;
+    IF cliente_existente IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cliente inexistente';
+    END IF;
+  END IF;
+END$$
+DELIMITER ;
+INSERT INTO pos_migraciones(version) VALUES('11_ventas_sin_identificacion');
+DROP PROCEDURE migrar_pos_11;

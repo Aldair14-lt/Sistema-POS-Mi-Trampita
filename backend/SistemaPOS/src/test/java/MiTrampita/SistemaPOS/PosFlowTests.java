@@ -49,6 +49,79 @@ class PosFlowTests {
     @Autowired TipoComprobanteRepository comprobantes;
     private static final AtomicInteger sequence = new AtomicInteger(1000);
 
+    @Test void ticketLocalSinClienteCompletaCuentaSinCrearFichaNiAlterarMarketing() throws Exception {
+        var f = fixture(5); long fichas = clientes.count();
+        var tipo = comprobantes.findByNombreIgnoreCaseAndSerie("NOTA DE VENTA", "NV01").orElseThrow();
+        var v = service.registrar(new VentaRequest(f.empresa().getId(), null, null, tipo.getId(),
+            "ANON-" + UUID.randomUUID(), f.mesa().getId(), List.of(new ItemRequest(f.primero().getId(), 1))), f.usuario().getId());
+        assertThat(v.getCliente()).isNull();
+        mvc.perform(get("/api/ventas/" + v.getId()).session(login(f.usuario())))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.cliente").isEmpty());
+        service.registrarPago(v.getId(), abono("5.00"), f.usuario().getId());
+        service.agregarItems(v.getId(), List.of(new ItemRequest(f.primero().getId(), 1)), UUID.randomUUID().toString());
+        entregar(v);
+        var request = new CobrarVentaRequest(parcial("18.60", MetodoPago.YAPE), new FacturacionRequest(TipoDocumento.NOTA_VENTA, null, null, null));
+        var cerrado = service.cobrar(v.getId(), request, f.usuario().getId());
+        assertThat(cerrado.getComprobante().getClienteDocumento()).isEmpty();
+        assertThat(cerrado.getComprobante().getClienteNombre()).isEqualTo("CONSUMIDOR FINAL");
+        assertThat(service.cobrar(v.getId(), request, f.usuario().getId()).getPagos()).hasSize(2);
+        assertThat(mesas.findById(f.mesa().getId()).orElseThrow().getEstado()).isEqualTo(EstadoMesa.LIBRE);
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(3);
+        assertThat(clientes.count()).isEqualTo(fichas);
+        assertThat(clientes.findById(f.cliente().getId()).orElseThrow().getFrecuenciaVisitas()).isZero();
+        mvc.perform(get("/api/caja/resumen").session(login(user("CAJA")))).andExpect(status().isOk());
+    }
+
+    @Test void facturaYEntregaExternaSinClienteNoAbrenMesaNiDescuentanStock() throws Exception {
+        var f = fixture(4); long total = ventas.count();
+        var factura = comprobantes.findByNombreIgnoreCaseAndSerie("FACTURA", "F001").orElseThrow();
+        String body = "{\"empresaId\":" + f.empresa().getId() + ",\"tipoComprobanteId\":" + factura.getId()
+            + ",\"numeroComprobante\":\"ANON-" + UUID.randomUUID() + "\",\"mesaId\":" + f.mesa().getId()
+            + ",\"items\":[{\"productoId\":" + f.primero().getId() + ",\"cantidad\":1}]}";
+        mvc.perform(post("/api/ventas").session(login(f.usuario())).with(csrf()).contentType("application/json").content(body))
+            .andExpect(status().isBadRequest());
+        var externo = new VentaRequest(f.empresa().getId(), null, null, factura.getId(), "ANON-" + UUID.randomUUID(), null,
+            List.of(new ItemRequest(f.primero().getId(), 1)), OrigenPedido.WHATSAPP, TipoEntrega.RECOJO, null, "999888777", null, false);
+        assertThatThrownBy(() -> service.registrar(externo, f.usuario().getId())).hasMessageContaining("cliente");
+        assertThat(ventas.count()).isEqualTo(total);
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(4);
+        assertThat(mesas.findById(f.mesa().getId()).orElseThrow().getEstado()).isEqualTo(EstadoMesa.LIBRE);
+    }
+
+    @Test void boletaLocalSinIdentificarRespetaLimiteEnRegistroYEnEmision() {
+        var f = fixture(3); var p = productos.findById(f.primero().getId()).orElseThrow();
+        var tipo = comprobantes.findByNombreIgnoreCaseAndSerie("BOLETA", "B001").orElseThrow();
+        p.setPrecioVenta(new BigDecimal("593.23")); productos.save(p);
+        var request = new VentaRequest(f.empresa().getId(), null, null, tipo.getId(), "ANON-" + UUID.randomUUID(),
+            f.mesa().getId(), List.of(new ItemRequest(p.getId(), 1)));
+        assertThatThrownBy(() -> service.registrar(request, f.usuario().getId())).hasMessageContaining("700");
+        assertThat(productos.findById(p.getId()).orElseThrow().getStockActual()).isEqualTo(3);
+        assertThat(mesas.findById(f.mesa().getId()).orElseThrow().getEstado()).isEqualTo(EstadoMesa.LIBRE);
+        // El rollback puede incrementar la versión del objeto en memoria; recargar antes de editarlo.
+        p = productos.findById(p.getId()).orElseThrow();
+        p.setPrecioVenta(new BigDecimal("593.22")); productos.save(p);
+        var v = service.registrar(request, f.usuario().getId()); entregar(v);
+        var c = service.cobrar(v.getId(), new CobrarVentaRequest(parcial("700.00", MetodoPago.YAPE)), f.usuario().getId()).getComprobante();
+        assertThat(c.getDni()).isNull(); assertThat(c.getClienteNombre()).isEqualTo("CONSUMIDOR FINAL");
+    }
+
+    @Test void ticketAnonimoPermiteFacturaFiscalSinInventarClienteYRechazaBoletaIncompleta() {
+        var f = fixture(3); var tipo = comprobantes.findByNombreIgnoreCaseAndSerie("NOTA DE VENTA", "NV01").orElseThrow();
+        long fichas = clientes.count();
+        var v = service.registrar(new VentaRequest(f.empresa().getId(), null, null, tipo.getId(), "ANON-" + UUID.randomUUID(),
+            f.mesa().getId(), List.of(new ItemRequest(f.primero().getId(), 1))), f.usuario().getId()); entregar(v);
+        var pago = parcial("11.80", MetodoPago.PLIN);
+        assertThatThrownBy(() -> service.cobrar(v.getId(), new CobrarVentaRequest(pago,
+            new FacturacionRequest(TipoDocumento.BOLETA, null, null, "Cliente sin documento")), f.usuario().getId()))
+            .hasMessageContaining("DNI");
+        assertThat(service.obtener(v.getId()).getPagos()).isEmpty();
+        var fiscal = new FacturacionRequest(TipoDocumento.FACTURA,
+            new FacturacionRequest.Factura("20123456789", "Empresa SAC", "Av. Principal 123"), null, null);
+        var c = service.cobrar(v.getId(), new CobrarVentaRequest(pago, fiscal), f.usuario().getId()).getComprobante();
+        assertThat(c.getRuc()).isEqualTo("20123456789"); assertThat(c.getClienteNombre()).isEqualTo("Empresa SAC");
+        assertThat(clientes.count()).isEqualTo(fichas);
+    }
+
     @Test void catalogoRechazaTiposDeComprobanteQueNoSePuedenEmitir() throws Exception {
         mvc.perform(post("/api/tipos-comprobante").session(login(user("ADMIN"))).with(csrf()).contentType("application/json")
             .content("{\"nombre\":\"RECIBO_NO_SOPORTADO\",\"serie\":\"X001\"}"))

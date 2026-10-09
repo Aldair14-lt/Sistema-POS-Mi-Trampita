@@ -261,8 +261,42 @@ cierre = caja.call("POST", f"/api/caja/sesiones/{turno['id']}/cerrar", {"efectiv
 assert float(cierre["totalCobrado"]) == 99.4 and float(cierre["efectivoEsperado"]) == 131.8
 assert float(cierre["diferencia"]) == 0
 assert caja.call("GET", f"/api/caja/sesiones/actual?empresaId={company['id']}") is None
-pendiente = next(o for o in caja.call("GET", "/api/pedidos-online") if float(o["saldoPendiente"]) > 0)
+pendiente = next(o for o in caja.call("GET", "/api/pedidos-online") if o["empresa"]["id"] == company["id"] and float(o["saldoPendiente"]) > 0)
 caja.call("POST", f"/api/ventas/{pendiente['id']}/pagos", payment(1), expected=409)
+
+# Consumidor sin identificar: ningún documento ficticio ni ficha de marketing.
+fichas_antes = len(admin.call("GET", "/api/clientes"))
+nota = next(r for r in admin.call("GET", "/api/tipos-comprobante") if r["nombre"] == "NOTA DE VENTA")
+anonymous_product = admin.call("POST", "/api/productos", {"categoria": {"id": category["id"]}, "proveedor": {"id": provider["id"]},
+    "codigoBarras": "ANON-" + suffix, "nombre": "Ticket sin cliente QA", "precioCompra": 1, "precioVenta": 10,
+    "stockActual": 3, "stockMinimo": 0, "areaDestino": "COCINA"}, expected=201)
+anonymous_payload = {"empresaId": company["id"], "tipoComprobanteId": nota["id"], "numeroComprobante": "ANON-" + suffix,
+    "mesaId": mesa["id"], "items": [{"productoId": anonymous_product["id"], "cantidad": 1}]}
+factura_tipo = next(r for r in admin.call("GET", "/api/tipos-comprobante") if r["nombre"] == "FACTURA")
+mozo.call("POST", "/api/ventas", {**anonymous_payload, "tipoComprobanteId": factura_tipo["id"]}, expected=400)
+assert stock(anonymous_product) == 3
+mozo.call("POST", "/api/ventas", {**anonymous_payload, "mesaId": None, "origenPedido": "WHATSAPP",
+    "tipoEntrega": "RECOJO", "telefono": "999888777"}, expected=400)
+anonymous_turn = caja.call("POST", "/api/caja/sesiones/abrir", {"empresaId": company["id"], "montoInicial": 0, "claveOperacion": str(uuid.uuid4())})
+anonymous_sale = mozo.call("POST", "/api/ventas", anonymous_payload, expected=201)
+assert anonymous_sale["cliente"] is None
+anonymous_id = anonymous_sale["id"]
+assert mozo.call("GET", f"/api/ventas/{anonymous_id}")["cliente"] is None
+caja.call("POST", f"/api/ventas/{anonymous_id}/pagos", payment(5, "YAPE"), expected=201)
+for item in anonymous_sale["detalles"]:
+    cook.call("PATCH", f"/api/cocina/items/{item['id']}/estado", {"estado": "PREPARANDO", "estadoActual": "PENDIENTE"})
+    cook.call("PATCH", f"/api/cocina/items/{item['id']}/estado", {"estado": "LISTO", "estadoActual": "PREPARANDO"})
+    caja.call("PATCH", f"/api/ventas/items/{item['id']}/servir", {"estado": "SERVIDO", "estadoActual": "LISTO"})
+anonymous_payment = payment(6.8, "YAPE")
+anonymous_closed = caja.call("POST", f"/api/ventas/{anonymous_id}/cobrar", {"pago": anonymous_payment})
+assert anonymous_closed["comprobante"]["clienteNombre"] == "CONSUMIDOR FINAL"
+assert anonymous_closed["comprobante"]["clienteDocumento"] == ""
+assert anonymous_closed["estado"] == "CERRADA"
+assert len(caja.call("POST", f"/api/ventas/{anonymous_id}/cobrar", {"pago": anonymous_payment})["pagos"]) == 2
+caja.call("GET", "/api/caja/resumen")
+assert len(admin.call("GET", "/api/clientes")) == fichas_antes
+assert stock(anonymous_product) == 2
+assert float(caja.call("POST", f"/api/caja/sesiones/{anonymous_turn['id']}/cerrar", {"efectivoDeclarado": 0})["totalCobrado"]) == 11.8
 admin.call("GET", "/api/marketing/proximos-cumpleaneros")
 admin.call("GET", "/api/marketing/inactivos")
 admin.call("GET", "/api/marketing/mejores")

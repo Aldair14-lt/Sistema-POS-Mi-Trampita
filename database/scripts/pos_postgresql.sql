@@ -550,3 +550,19 @@ CREATE INDEX idx_detalle_comanda ON detalle_venta(id_venta,clave_comanda);
 -- Los detalles anteriores conservan sus datos y no se asignan a tandas ficticias.
 INSERT INTO pos_migraciones(version) VALUES('10_comandas_idempotentes');
 COMMIT;
+
+-- 11. VENTAS LOCALES SIN IDENTIFICACION. Requiere 10; respaldo y backend detenido.
+BEGIN;
+DO $$ BEGIN
+  IF EXISTS(SELECT 1 FROM pos_migraciones WHERE version='11_ventas_sin_identificacion') THEN
+    RAISE EXCEPTION 'La migración 11 ya fue aplicada';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='10_comandas_idempotentes') THEN
+    RAISE EXCEPTION 'Primero aplica la migración 10';
+  END IF;
+END $$;
+ALTER TABLE ventas ALTER COLUMN id_cliente DROP NOT NULL;
+ALTER TABLE ventas ADD CONSTRAINT ck_venta_cliente_local CHECK(id_cliente IS NOT NULL OR origen_pedido='LOCAL');
+-- Se preservan clientes, comprobantes históricos, stock y pagos. No se inventan documentos.
+INSERT INTO pos_migraciones(version) VALUES('11_ventas_sin_identificacion');
+COMMIT;

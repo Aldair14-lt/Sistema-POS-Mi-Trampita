@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { api } from './api'
 import { storageRead, storageWrite } from './utils/storage'
+import { receiptType, receiptLabel, requiresIdentification } from './utils/receipt'
 import { usePrint } from './components/PrintManager'
 import { permissions } from './permissions'
 import TablesView from './TablesView'
@@ -26,13 +27,6 @@ const blankCustomer = {
 
 function formatMoney(value) {
   return Number(value || 0).toFixed(2)
-}
-
-function receiptLabel(name) {
-  const value = (name || '').toUpperCase()
-  if (value.includes('FACTURA')) return 'Factura'
-  if (value.includes('BOLETA')) return 'Boleta'
-  return 'Otro'
 }
 
 export default function SalesPos({ session }) {
@@ -58,6 +52,7 @@ export default function SalesPos({ session }) {
   const [comprobanteId, setComprobanteId] = useState('')
   const [paymentId, setPaymentId] = useState(null)
   const [customer, setCustomer] = useState(blankCustomer)
+  const [identifyCustomer, setIdentifyCustomer] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -99,8 +94,8 @@ export default function SalesPos({ session }) {
       setAreas(areaData)
       if (!comprobanteId && receiptData.length) {
         const preferred = [...receiptData].sort((a, b) => {
-          const order = { BOLETA: 0, FACTURA: 1 }
-          return (order[receiptLabel(a.nombre).toUpperCase()] ?? 2) - (order[receiptLabel(b.nombre).toUpperCase()] ?? 2)
+          const order = { NOTA_VENTA: 0, BOLETA: 1, FACTURA: 2 }
+          return (order[receiptType(a.nombre)] ?? 3) - (order[receiptType(b.nombre)] ?? 3)
         })
         setComprobanteId(String(preferred[0].id))
       }
@@ -137,7 +132,8 @@ export default function SalesPos({ session }) {
     () => openSales.find((sale) => String(sale.id) === String(activeSaleId)),
     [openSales, activeSaleId]
   )
-  const isInvoice = selectedReceipt?.nombre?.toUpperCase().includes('FACTURA')
+  const selectedType = receiptType(selectedReceipt?.nombre)
+  const isInvoice = selectedType === 'FACTURA'
   const filteredProducts = useMemo(() => {
     const term = search.trim().toLowerCase()
     return products.filter((product) => {
@@ -152,6 +148,7 @@ export default function SalesPos({ session }) {
   const igv = Math.round((subtotal * 0.18 + Number.EPSILON) * 100) / 100
   const total = !cart.length && activeSale ? Number(activeSale.total) : Math.round((subtotal + igv + Number.EPSILON) * 100) / 100
   const additionalTotal = additionalSubtotal * 1.18
+  const customerRequired = requiresIdentification(selectedType, total, identifyCustomer)
 
   useEffect(() => {
     const document = customer.numeroDocumento.trim()
@@ -297,16 +294,15 @@ export default function SalesPos({ session }) {
     if (!empresas.length) return setError('Solicita al administrador completar los datos fiscales en Configuración.')
     if (!selectedReceipt) return setError('Selecciona el tipo de comprobante.')
     if (!cart.length) return setError('Agrega al menos un producto al carrito.')
-    if (!/^\d{6,20}$/.test(document)) return setError('El documento debe contener entre 6 y 20 dígitos.')
-    if (!name) return setError('Ingresa el nombre o razón social del cliente.')
-    if (isInvoice && !/^\d{11}$/.test(document)) return setError('Para una factura debes ingresar un RUC de 11 dígitos.')
+    if (customerRequired && !(isInvoice ? /^\d{11}$/ : /^\d{8}$/).test(document)) return setError(isInvoice ? 'Para una factura debes ingresar un RUC de 11 dígitos.' : 'La boleta identificada requiere DNI de 8 dígitos.')
+    if (customerRequired && !name) return setError('Ingresa el nombre o razón social del cliente.')
     if (isInvoice && !customer.direccion.trim()) return setError('La dirección es obligatoria para una factura.')
-    if (customer.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.correo)) return setError('El correo del cliente no es válido.')
+    if (customerRequired && customer.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.correo)) return setError('El correo del cliente no es válido.')
     submitting.current = true; setSaving(true)
     try {
       const sale = await api.create('/api/ventas', {
         empresaId: empresas[0].id,
-        cliente: {
+        cliente: customerRequired ? {
           ...customer,
           numeroDocumento: document,
           nombresRazonSocial: name,
@@ -314,7 +310,7 @@ export default function SalesPos({ session }) {
           telefono: customer.telefono.trim(),
           correo: customer.correo.trim(),
           fechaNacimiento: customer.fechaNacimiento || null
-        },
+        } : null,
         tipoComprobanteId: Number(selectedReceipt.id),
         numeroComprobante: `${selectedReceipt.serie}-${crypto.randomUUID().slice(0, 18)}`,
         mesaId: selectedMesaId ? Number(selectedMesaId) : null,
@@ -435,9 +431,21 @@ export default function SalesPos({ session }) {
 
         <div className="checkout-form">
           {!activeSale && canOrder && <>
+          <div className="checkout-section-title"><FileText size={15} /> Comprobante solicitado</div>
+          <div className="receipt-options" role="group" aria-label="Tipo de comprobante">
+            {comprobantes.map((item) => <button type="button" key={item.id} aria-pressed={String(item.id) === String(comprobanteId)} className={`receipt-option ${String(item.id) === String(comprobanteId) ? 'selected' : ''}`} disabled={saving} onClick={() => { setComprobanteId(String(item.id)); setError('') }}>
+              <FileText size={17} /><span>{receiptLabel(item.nombre)}</span><small>{item.serie}</small>
+            </button>)}
+          </div>
+          {selectedType === 'NOTA_VENTA' && <p className="muted">Ticket simple sin datos del cliente. Se imprimirá como consumidor final.</p>}
+          {selectedType === 'BOLETA' && <>
+            {total <= 700 && <label className="customer-identification"><input type="checkbox" checked={identifyCustomer} disabled={saving} onChange={event => setIdentifyCustomer(event.target.checked)} />Emitir Boleta a nombre del cliente</label>}
+            <p className="muted">DNI y nombre obligatorios para una Boleta identificada o mayor a S/ 700.</p>
+          </>}
+          {customerRequired && <>
           <div className="checkout-section-title"><UserRound size={15} /> Datos del cliente</div>
           <div className="inline-fields">
-            <label><span>{isInvoice ? 'RUC' : 'DNI / documento'} *</span><input inputMode="numeric" maxLength={20} value={customer.numeroDocumento} onChange={(event) => updateCustomer('numeroDocumento', event.target.value.replace(/\D/g, ''))} placeholder={isInvoice ? '11 dígitos' : 'DNI del cliente'} /></label>
+            <label><span>{isInvoice ? 'RUC' : 'DNI'} *</span><input required inputMode="numeric" pattern={isInvoice ? '[0-9]{11}' : '[0-9]{8}'} maxLength={isInvoice ? 11 : 8} value={customer.numeroDocumento} onChange={(event) => updateCustomer('numeroDocumento', event.target.value.replace(/\D/g, ''))} placeholder={isInvoice ? '11 dígitos' : '8 dígitos'} /></label>
             <label><span>{isInvoice ? 'Razón social' : 'Nombre completo'} *</span><input maxLength={150} value={customer.nombresRazonSocial} onChange={(event) => updateCustomer('nombresRazonSocial', event.target.value)} placeholder="Nombre del cliente" /></label>
           </div>
           <label><span>Dirección {isInvoice ? '*' : '(opcional)'}</span><input maxLength={255} value={customer.direccion} onChange={(event) => updateCustomer('direccion', event.target.value)} placeholder="Dirección fiscal o domicilio" /></label>
@@ -447,12 +455,7 @@ export default function SalesPos({ session }) {
           </div>
 
           <label><span>Fecha de nacimiento (opcional)</span><input type="date" value={customer.fechaNacimiento} onChange={event => updateCustomer('fechaNacimiento', event.target.value)} /></label>
-          <div className="checkout-section-title"><FileText size={15} /> Comprobante solicitado</div>
-          <div className="receipt-options" role="group" aria-label="Tipo de comprobante">
-            {comprobantes.map((item) => <button type="button" key={item.id} className={`receipt-option ${String(item.id) === String(comprobanteId) ? 'selected' : ''}`} onClick={() => { setComprobanteId(String(item.id)); setError('') }}>
-              <FileText size={17} /><span>{receiptLabel(item.nombre)}</span><small>{item.serie}</small>
-            </button>)}
-          </div>
+          </>}
           {!comprobantes.length && <div className="form-error">No hay comprobantes configurados.</div>}
           </>} {/* Datos de cliente y comprobante */}
           <div className="totals"><div><span>Subtotal</span><b>S/ {formatMoney(subtotal)}</b></div><div><span>IGV (18%)</span><b>S/ {formatMoney(igv)}</b></div><div className="total-line"><strong>Total</strong><strong>S/ {formatMoney(total)}</strong></div>{activeSale && <div><span>Abonado / Saldo actual</span><b>S/ {formatMoney(activeSale.totalPagado)} / S/ {formatMoney(activeSale.saldoPendiente)}</b></div>}</div>

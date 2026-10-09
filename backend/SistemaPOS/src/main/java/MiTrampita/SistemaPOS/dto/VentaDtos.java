@@ -31,8 +31,11 @@ public final class VentaDtos {
                 && telefono != null && telefono.matches("[+0-9 ()-]{6,20}")
                 && (tipoEntrega != TipoEntrega.DELIVERY || (direccion != null && !direccion.isBlank()));
         }
-        @AssertTrue(message = "Selecciona un cliente o completa sus datos, no ambos")
-        public boolean isClienteValido() { return (clienteId != null) != (cliente != null); }
+        @AssertTrue(message = "No combines cliente y clienteId; los pedidos externos requieren un cliente")
+        public boolean isClienteValido() {
+            return !(clienteId != null && cliente != null)
+                && (origenPedido == null || origenPedido == OrigenPedido.LOCAL || clienteId != null || cliente != null);
+        }
     }
     public record ClienteRequest(
             @NotBlank @Pattern(regexp = "\\d{6,20}", message = "El documento debe tener de 6 a 20 dígitos") String numeroDocumento,

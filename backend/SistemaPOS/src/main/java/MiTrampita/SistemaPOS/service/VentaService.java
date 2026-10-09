@@ -74,6 +74,7 @@ public class VentaService {
     public Venta registrar(VentaRequest request, Integer usuarioId) {
         OrigenPedido origen = request.origenPedido() == null ? OrigenPedido.LOCAL : request.origenPedido();
         if (!request.isEntregaValida()) throw bad("Datos de mesa o entrega incompletos");
+        if (!request.isClienteValido()) throw bad("Datos de cliente incompatibles con el pedido");
         Mesa mesa = null;
         if (origen == OrigenPedido.LOCAL) {
             mesa = mesaService.bloquearParaAbrir(request.mesaId());
@@ -96,6 +97,9 @@ public class VentaService {
         venta.setNumeroComprobante(request.numeroComprobante().trim());
         venta.setFechaVenta(OffsetDateTime.now());
         agregarLineas(venta, request.items());
+        if (venta.getCliente() == null && TipoDocumento.desdeCatalogo(venta.getTipoComprobante().getNombre()) == TipoDocumento.BOLETA
+                && venta.getTotal().compareTo(ComprobanteService.UMBRAL_DNI_BOLETA) > 0)
+            throw bad("Boleta mayor a S/ 700 requiere DNI y nombre del cliente");
         if (mesa != null) mesa.setEstado(EstadoMesa.ATENDIENDO);
         ventas.saveAndFlush(venta);
         if (Boolean.TRUE.equals(request.pagoTotal()) && (request.pagoInicial() == null ||
@@ -107,6 +111,7 @@ public class VentaService {
 
     @Transactional
     public Venta registrarOnline(PedidoOnlineRequest request, Integer usuarioId) {
+        if (!request.isClienteValido()) throw bad("El pedido online requiere datos del cliente");
         if (request.tipoEntrega() != TipoEntrega.RECOJO && request.tipoEntrega() != TipoEntrega.DELIVERY)
             throw bad("Selecciona recojo o delivery");
         if (request.tipoEntrega() == TipoEntrega.DELIVERY &&
@@ -276,11 +281,13 @@ public class VentaService {
             throw conflict("Los pagos deben cubrir exactamente el total antes de cerrar");
         if (venta.getDetalles().isEmpty()) throw bad("La comanda no tiene productos");
         Mesa mesa = venta.getMesa() == null ? null : mesas.findByIdForUpdate(venta.getMesa().getId()).orElseThrow(() -> missing("Mesa"));
-        Cliente cliente = clientes.findByIdForUpdate(venta.getCliente().getId()).orElseThrow(() -> missing("Cliente"));
-        entityManager.refresh(cliente, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        venta.setCliente(cliente);
-        cliente.setFrecuenciaVisitas(Math.addExact(cliente.getFrecuenciaVisitas(), 1L));
-        cliente.setTotalGastado(cliente.getTotalGastado().add(venta.getTotal()));
+        if (venta.getCliente() != null) {
+            Cliente cliente = clientes.findByIdForUpdate(venta.getCliente().getId()).orElseThrow(() -> missing("Cliente"));
+            entityManager.refresh(cliente, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            venta.setCliente(cliente);
+            cliente.setFrecuenciaVisitas(Math.addExact(cliente.getFrecuenciaVisitas(), 1L));
+            cliente.setTotalGastado(cliente.getTotalGastado().add(venta.getTotal()));
+        }
         venta.setEstado(EstadoVenta.CERRADA);
         venta.setFechaCobro(OffsetDateTime.now());
         comprobanteService.emitir(venta, fiscal);
@@ -391,7 +398,7 @@ public class VentaService {
 
     private Cliente resolverCliente(Integer id, ClienteRequest data) {
         if (id != null) return clientes.findById(id).orElseThrow(() -> missing("Cliente"));
-        if (data == null) throw bad("Los datos del cliente son obligatorios");
+        if (data == null) return null;
         var existing = clientes.findByNumeroDocumento(data.numeroDocumento().trim());
         // No sobreescribir la ficha ni las métricas por un pedido simultáneo o por datos antiguos del POS.
         if (existing.isPresent()) return existing.get();
@@ -408,6 +415,11 @@ public class VentaService {
         TipoDocumento tipo;
         try { tipo = TipoDocumento.desdeCatalogo(venta.getTipoComprobante().getNombre()); }
         catch (IllegalArgumentException ex) { throw bad("Selecciona un tipo de comprobante soportado: NOTA DE VENTA, BOLETA o FACTURA"); }
+        if (venta.getCliente() == null) {
+            if (tipo == TipoDocumento.FACTURA || venta.getOrigenPedido() != OrigenPedido.LOCAL)
+                throw bad("Factura y pedidos externos requieren datos del cliente");
+            return;
+        }
         if (tipo == TipoDocumento.FACTURA
                 && (!venta.getCliente().getNumeroDocumento().matches("\\d{11}")
                 || venta.getCliente().getDireccion() == null || venta.getCliente().getDireccion().isBlank()))

@@ -29,8 +29,9 @@ public class Venta {
     @ManyToOne(optional = false)
     @JoinColumn(name = "id_usuario", nullable = false)
     private Usuario usuario;
-    @ManyToOne(optional = false)
-    @JoinColumn(name = "id_cliente", nullable = false)
+    // Venta local a consumidor sin identificar; migración SQL 11 en ambos motores.
+    @ManyToOne
+    @JoinColumn(name = "id_cliente")
     private Cliente cliente;
     @ManyToOne(optional = false)
     @JoinColumn(name = "id_tipo_comprobante", nullable = false)

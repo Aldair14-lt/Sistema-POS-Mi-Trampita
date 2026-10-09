@@ -74,7 +74,8 @@ public class ComprobanteService {
         var errores = validator.validate(f);
         if (!errores.isEmpty()) throw new ConstraintViolationException(errores);
         // El umbral se evalúa contra el total de la venta, nunca contra el último abono.
-        if (f.tipoComprobante() == TipoDocumento.BOLETA && (total.compareTo(UMBRAL_DNI_BOLETA) > 0 || f.dni() != null)
+        if (f.tipoComprobante() == TipoDocumento.BOLETA && (total.compareTo(UMBRAL_DNI_BOLETA) > 0 || f.dni() != null
+                || (f.nombreCliente() != null && !f.nombreCliente().isBlank()))
                 && (f.dni() == null || f.nombreCliente() == null || f.nombreCliente().isBlank()))
             throw bad("Boleta mayor a S/ 700 o identificada requiere DNI y nombre del cliente");
     }
@@ -84,12 +85,17 @@ public class ComprobanteService {
         try { tipo = TipoDocumento.desdeCatalogo(venta.getTipoComprobante().getNombre()); }
         catch (IllegalArgumentException ex) { throw bad(ex.getMessage()); }
         Cliente c = venta.getCliente();
+        if (c == null) {
+            if (tipo == TipoDocumento.FACTURA) throw bad("Factura requiere RUC, razón social y dirección fiscal");
+            return new FacturacionRequest(tipo, null, null, null);
+        }
         if (tipo == TipoDocumento.FACTURA) {
             if (c.getDireccion() == null || c.getDireccion().isBlank()) throw bad("Factura requiere RUC de 11 dígitos y dirección fiscal");
             return new FacturacionRequest(tipo, new FacturacionRequest.Factura(c.getNumeroDocumento(), c.getNombresRazonSocial(), c.getDireccion()), null, null);
         }
         String dni = tipo == TipoDocumento.BOLETA && c.getNumeroDocumento().matches("[0-9]{8}") ? c.getNumeroDocumento() : null;
-        return new FacturacionRequest(tipo, null, dni, c.getNombresRazonSocial());
+        // Una ficha con otro documento no se convierte en una Boleta parcialmente identificada.
+        return new FacturacionRequest(tipo, null, dni, tipo == TipoDocumento.BOLETA && dni == null ? null : c.getNombresRazonSocial());
     }
     private boolean compatible(TipoComprobante t, TipoDocumento tipo) {
         try { return TipoDocumento.desdeCatalogo(t.getNombre()) == tipo; }

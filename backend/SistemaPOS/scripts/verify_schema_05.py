@@ -55,6 +55,8 @@ migration08, migration09 = migration08.split('-- 09. MENU PUBLICO Y RECEPCION WE
 migration09 = migration09.split('\n', 1)[1]
 migration09, migration10 = migration09.split('-- 10. COMANDAS ADICIONALES IDEMPOTENTES.', 1)
 migration10 = migration10.split('\n', 1)[1]
+migration10, migration11 = migration10.split('-- 11. VENTAS LOCALES SIN IDENTIFICACION.', 1)
+migration11 = migration11.split('\n', 1)[1]
 if not pg:
     base = base.replace('`pos_db`', '`' + args.database + '`')
 run(base, args.database)
@@ -175,6 +177,9 @@ assert 'ya fue aplicada' in run(migration09, args.database, fail=True)
 if not pg:
     run('DROP PROCEDURE IF EXISTS migrar_pos_09;', args.database)
 
+assert 'Primero aplica' in run(migration11, args.database, fail=True)
+if not pg:
+    run('DROP PROCEDURE IF EXISTS migrar_pos_11;', args.database)
 run(migration10, args.database)
 assert run('SELECT COUNT(*) FROM operaciones_comanda;', args.database) == '0'
 assert run('SELECT COUNT(*) FROM detalle_venta WHERE clave_comanda IS NOT NULL;', args.database) == '0'
@@ -184,6 +189,26 @@ assert run('SELECT id_usuario, "contraseña" FROM usuario ORDER BY id_usuario;' 
 assert 'ya fue aplicada' in run(migration10, args.database, fail=True)
 if not pg:
     run('DROP PROCEDURE IF EXISTS migrar_pos_10;', args.database)
+
+historicos_antes = run('SELECT id_venta,id_cliente,total FROM ventas ORDER BY id_venta;', args.database)
+run(migration11, args.database)
+assert run('SELECT id_venta,id_cliente,total FROM ventas ORDER BY id_venta;', args.database) == historicos_antes
+assert run("SELECT stock_actual FROM producto WHERE codigo_barras='QA-MIG';", args.database) == '8'
+assert run('SELECT id_usuario, "contraseña" FROM usuario ORDER BY id_usuario;' if pg else
+           'SELECT id_usuario, `contraseña` FROM usuario ORDER BY id_usuario;', args.database) == usuarios_antes
+assert run("SELECT is_nullable FROM information_schema.columns WHERE table_name='ventas' AND column_name='id_cliente' AND " +
+           ("table_catalog=current_database()" if pg else 'table_schema=DATABASE()') + ';', args.database) == 'YES'
+run("UPDATE ventas SET id_cliente=NULL WHERE numero_comprobante='QA-MIG-ABIERTA';", args.database)
+assert run("SELECT COUNT(*) FROM ventas WHERE id_cliente IS NULL;", args.database) == '1'
+error_cliente_externo = run("UPDATE ventas SET origen_pedido='WHATSAPP',tipo_entrega='RECOJO',mesa_id=NULL,telefono_entrega='999888777' WHERE id_cliente IS NULL;", args.database, fail=True)
+assert ('ck_venta_cliente_local' if pg else 'Pedidos externos requieren cliente') in error_cliente_externo
+run("UPDATE ventas SET id_cliente=2147483647 WHERE id_cliente IS NULL;", args.database, fail=True)
+assert run('SELECT COUNT(*) FROM ventas WHERE id_cliente IS NULL;', args.database) == '1'
+run('UPDATE ventas SET id_cliente=(SELECT MIN(id_cliente) FROM clientes) WHERE id_cliente IS NULL;', args.database)
+assert run('SELECT COUNT(*) FROM ventas WHERE id_cliente IS NULL;', args.database) == '0'
+assert 'ya fue aplicada' in run(migration11, args.database, fail=True)
+if not pg:
+    run('DROP PROCEDURE IF EXISTS migrar_pos_11;', args.database)
 
 # La instalación completa también debe funcionar ejecutando un solo archivo.
 full_database = args.database + '_full'
@@ -202,4 +227,5 @@ assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='09_menu_publico_
 assert run('SELECT COUNT(*) FROM tiendas_web;', full_database) == '0'
 assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='10_comandas_idempotentes';", full_database) == '1'
 assert run('SELECT COUNT(*) FROM operaciones_comanda;', full_database) == '0'
-print(f'PASS {args.engine}: instalación completa, migraciones 05/06/07/08/09/10, históricos, contraseñas preservadas, turno único, destinos y reejecución protegida. BD: {args.database}')
+assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='11_ventas_sin_identificacion';", full_database) == '1'
+print(f'PASS {args.engine}: instalación completa, migraciones 05-11, históricos, contraseñas preservadas, consumidor sin identificar local, FK conservada, turno único, destinos y reejecución protegida. BD: {args.database}')

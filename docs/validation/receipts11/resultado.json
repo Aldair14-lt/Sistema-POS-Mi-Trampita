@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "saleId": 37,
+  "errors": [],
+  "checks": [
+    "ticket sin identificación desde pedido hasta cobro e impresión",
+    "datos de Factura ocultos no enviados al cambiar a ticket",
+    "Boleta identificada requiere DNI",
+    "Factura inválida no llega al servidor",
+    "stock y marketing",
+    "Caja admite cliente null",
+    "vista móvil 390px"
+  ]
+}

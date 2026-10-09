@@ -6,6 +6,7 @@ import { money } from '../OrderStatus'
 import '../../styles/cashier.css'
 import { usePrint } from '../PrintManager'
 import { restorePayment, persistPayment } from '../../utils/pendingOperation'
+import { requiresIdentification } from '../../utils/receipt'
 
 const methods = [['efectivo', 'Efectivo', Banknote], ['yape', 'Yape', Smartphone], ['plin', 'Plin', Smartphone], ['tarjeta', 'Tarjeta', CreditCard]]
 const receipts = [['NOTA_VENTA', 'Ticket simple'], ['BOLETA', 'Boleta'], ['FACTURA', 'Factura']]
@@ -34,7 +35,7 @@ export default function PaymentModal({ saleId, onClose, onUpdated }) {
   const complete = !sale?.mesa || sale.detalles.every(item => ['SERVIDO', 'CANCELADO'].includes(item.estadoPreparacion))
   const totalMode = mode === 'total' || saldo === 0
   const payable = totalMode ? saldo : Number(amount)
-  const identified = cents(sale?.total) > 70000 || Boolean(fiscal.dni)
+  const identified = requiresIdentification(receipt, sale?.total, Boolean(fiscal.dni || fiscal.nombreCliente.trim()))
   const field = (key, value) => setFiscal(current => ({ ...current, [key]: value }))
   useEffect(() => {
     if (!sale || initialized.current) return

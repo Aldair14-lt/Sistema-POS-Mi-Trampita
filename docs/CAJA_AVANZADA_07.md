@@ -83,7 +83,7 @@ En el modal, `receipt === 'FACTURA'` monta los campos RUC, razón social y direc
 
 En efectivo se calcula `max(0, centimos(recibido) - centimos(importe)) / 100`; por ejemplo, S/ 50 recibidos para un pago de S/ 36.05 producen S/ 13.95 de vuelto. Se usan céntimos en la UI y `BigDecimal` en el servidor. Un monto recibido insuficiente no se puede confirmar. Yape, Plin y Tarjeta aplican solo el importe del pago.
 
-Para boleta, DNI de ocho dígitos es opcional hasta S/ 700 inclusive; si se consigna DNI, se exige nombre. Por encima de S/ 700, ambos son obligatorios. El umbral se evalúa contra el **total de la venta**, aunque el último abono sea pequeño. Fuente de la regla de identificación: [SUNAT, Boleta de Venta Electrónica](https://cpe.sunat.gob.pe/tipos_de_comprobantes/boleta). Este contrato cubre DNI; otros documentos y excepciones fiscales requieren una extensión específica.
+Para boleta, DNI de ocho dígitos es opcional hasta S/ 700 inclusive; si se consigna DNI o nombre, se exige completar ambos. Por encima de S/ 700, ambos son obligatorios. El umbral se evalúa contra el **total de la venta**, aunque el último abono sea pequeño. Fuente de la regla de identificación: [SUNAT, Boleta de Venta Electrónica](https://cpe.sunat.gob.pe/tipos_de_comprobantes/boleta). Este contrato cubre DNI; otros documentos y excepciones fiscales requieren una extensión específica.
 
 Los endpoints anteriores sin `facturacion` conservan compatibilidad: toman el tipo y los datos del cliente existente, pero los revalidan antes de emitir. Elegir otra razón social al cobrar no modifica la ficha del cliente de la comanda.
 

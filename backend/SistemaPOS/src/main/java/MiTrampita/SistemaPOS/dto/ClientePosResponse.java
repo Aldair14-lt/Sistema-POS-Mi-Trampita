@@ -7,6 +7,7 @@ import java.time.LocalDate;
 public record ClientePosResponse(Integer id, String numeroDocumento, String nombresRazonSocial,
         String direccion, String telefono, String correo, LocalDate fechaNacimiento) {
     public static ClientePosResponse from(Cliente c) {
+        if (c == null) return null;
         return new ClientePosResponse(c.getId(), c.getNumeroDocumento(), c.getNombresRazonSocial(),
                 c.getDireccion(), c.getTelefono(), c.getCorreo(), c.getFechaNacimiento());
     }

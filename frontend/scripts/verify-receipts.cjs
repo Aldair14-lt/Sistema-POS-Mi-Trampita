@@ -1,0 +1,111 @@
+/* Ejecutar exclusivamente con Vite y backend conectados a una base QA local. */
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright')
+const assert = require('node:assert/strict')
+const fs = require('node:fs/promises')
+const path = require('node:path')
+const baseURL = process.env.POS_UI_URL || 'http://127.0.0.1:15199'
+assert(/^http:\/\/(127\.0\.0\.1|localhost):/.test(baseURL), 'Usar Vite QA local')
+assert(process.env.POS_TEST_PASSWORD, 'Define POS_TEST_PASSWORD')
+const output = process.env.POS_VALIDATION_DIR || path.resolve(__dirname, '../../docs/validation/receipts11')
+
+async function main() {
+  await fs.mkdir(output, { recursive: true })
+  const browser = await chromium.launch({ channel: 'msedge', headless: true })
+  const context = await browser.newContext({ baseURL, viewport: { width: 1440, height: 1100 } })
+  const errors = []
+  const call = async (method, url, data) => {
+    const headers = {}
+    if (method !== 'GET') { const t = await (await context.request.get('/api/auth/csrf')).json(); headers[t.headerName] = t.token }
+    const response = await context.request.fetch(url, { method, data, headers })
+    assert(response.ok(), `${method} ${url}: ${response.status()} ${await response.text()}`)
+    const text = await response.text(); return text ? JSON.parse(text) : null
+  }
+  try {
+    await call('POST', '/api/auth/login', { usuario: 'admin', contrasena: process.env.POS_TEST_PASSWORD })
+    const suffix = Date.now().toString().slice(-8)
+    const companies = await call('GET', '/api/configuracion')
+    const company = companies[0] || await call('POST', '/api/configuracion', { ruc: `20${suffix}1`, razonSocial: 'Recreo QA recibos', direccion: 'Av. QA 123' })
+    if (!await call('GET', `/api/caja/sesiones/actual?empresaId=${company.id}`)) await call('POST', '/api/caja/sesiones/abrir', { empresaId: company.id, montoInicial: 0, claveOperacion: crypto.randomUUID() })
+    const clientsBefore = (await call('GET', '/api/clientes')).length
+    const provider = await call('POST', '/api/proveedores', { rucDni: `10${suffix}1`, razonSocial: 'Proveedor QA recibos' })
+    const category = (await call('GET', '/api/categorias'))[0]
+    const product = await call('POST', '/api/productos', { categoria: { id: category.id }, proveedor: { id: provider.id },
+      codigoBarras: `QA11-${suffix}`, nombre: `Menú ticket QA ${suffix}`, precioCompra: 1, precioVenta: 10, stockActual: 5, stockMinimo: 0, areaDestino: 'COCINA' })
+    const area = await call('POST', '/api/areas', { nombre: `Recibos QA ${suffix}`, estado: 'ACTIVA' })
+    const max = Math.max(...(await call('GET', '/api/mesas')).map(m => m.numero))
+    const table = await call('POST', '/api/mesas', { numero: max + 1, capacidad: 4, areaId: area.id })
+    const page = await context.newPage()
+    page.on('pageerror', error => errors.push(error.message))
+    const requests = []
+    page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/ventas') requests.push(request.postDataJSON()) })
+    await page.addInitScript(() => { window.__prints = 0; window.print = () => { window.__prints++ } })
+    await page.goto('/')
+    await page.locator('.sidebar').getByRole('button', { name: /Mesas y ventas/ }).click()
+    await page.locator('.tables-areas').getByRole('button', { name: area.nombre, exact: true }).click()
+    await page.locator('.table-tile').click()
+    const receipts = page.locator('.receipt-options')
+    assert.equal(await receipts.getByRole('button', { name: /Ticket simple/ }).getAttribute('aria-pressed'), 'true')
+    assert.equal(await page.getByLabel(/^DNI/).count(), 0)
+    await page.locator('.product-card').filter({ hasText: product.nombre }).click()
+    await receipts.getByRole('button', { name: /Factura/ }).click()
+    await page.getByLabel('RUC *', { exact: true }).fill('123')
+    await page.getByRole('button', { name: /Enviar comanda/ }).click()
+    await page.getByRole('alert').filter({ hasText: 'RUC de 11' }).waitFor()
+    assert.equal(requests.length, 0)
+    await page.getByLabel('RUC *', { exact: true }).fill('20123456789')
+    await page.getByLabel('Razón social *', { exact: true }).fill('Datos que no deben salir en el ticket')
+    await page.getByLabel('Dirección *', { exact: true }).fill('Av. QA 123')
+    await receipts.getByRole('button', { name: /Boleta/ }).click()
+    assert.equal(await page.getByLabel(/^DNI/).count(), 0)
+    await page.getByLabel('Emitir Boleta a nombre del cliente', { exact: true }).check()
+    assert.equal(await page.getByLabel('DNI *', { exact: true }).getAttribute('maxlength'), '8')
+    await receipts.getByRole('button', { name: /Ticket simple/ }).click()
+    assert.equal(await page.getByLabel(/^DNI|^RUC|^Nombre completo|^Razón social/).count(), 0)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.waitForFunction(() => document.querySelector('.sidebar').getBoundingClientRect().right <= 1)
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    await page.locator('.checkout-form').screenshot({ path: path.join(output, '01-ticket-sin-datos-movil.png') })
+    await page.setViewportSize({ width: 1440, height: 1100 })
+    await page.getByRole('button', { name: /Enviar comanda/ }).click()
+    await page.locator('.open-sale-summary').waitFor()
+    assert.equal(requests.length, 1); assert.equal(requests[0].cliente, null)
+    const sale = (await call('GET', '/api/ventas/abiertas')).find(s => s.mesa?.id === table.id)
+    assert(sale); assert.equal(sale.cliente, null)
+    for (const item of sale.detalles) {
+      await call('PATCH', `/api/cocina/items/${item.id}/estado`, { estado: 'PREPARANDO', estadoActual: 'PENDIENTE' })
+      await call('PATCH', `/api/cocina/items/${item.id}/estado`, { estado: 'LISTO', estadoActual: 'PREPARANDO' })
+      await call('PATCH', `/api/ventas/items/${item.id}/servir`, { estado: 'SERVIDO', estadoActual: 'LISTO' })
+    }
+    await page.getByRole('button', { name: 'Pagos parciales / cerrar cuenta', exact: true }).click()
+    const modal = page.getByRole('dialog')
+    await modal.getByRole('button', { name: 'Yape', exact: true }).click()
+    await modal.getByRole('button', { name: /Continuar a comprobante/ }).click()
+    await modal.getByRole('button', { name: 'Factura', exact: true }).click()
+    assert.equal(await modal.getByLabel('RUC', { exact: true }).getAttribute('required'), '')
+    await modal.getByRole('button', { name: 'Ticket simple', exact: true }).click()
+    assert.equal(await modal.getByLabel(/^DNI|^RUC|^Nombre del cliente|^Razón social/).count(), 0)
+    await modal.screenshot({ path: path.join(output, '02-cobro-sin-datos.png') })
+    await modal.getByRole('button', { name: 'Emitir y cerrar mesa', exact: true }).click()
+    await page.waitForFunction(() => window.__prints === 1)
+    const closed = await call('GET', `/api/ventas/${sale.id}`)
+    assert.equal(closed.comprobante.clienteDocumento, '')
+    assert.equal(closed.comprobante.clienteNombre, 'CONSUMIDOR FINAL')
+    assert.equal(closed.cliente, null); assert.equal(closed.estado, 'CERRADA')
+    assert.equal((await call('GET', '/api/clientes')).length, clientsBefore)
+    assert.equal((await call('GET', '/api/productos')).find(p => p.id === product.id).stockActual, 4)
+    await page.emulateMedia({ media: 'print' })
+    const printed = await page.locator('.pos-print-document').innerText()
+    assert(printed.includes('CONSUMIDOR FINAL')); assert(!printed.includes('DNI:')); assert(!printed.includes('20123456789'))
+    await page.locator('.pos-print-document').screenshot({ path: path.join(output, '03-ticket-80mm.png') })
+    await page.pdf({ path: path.join(output, '03-ticket-80mm.pdf'), preferCSSPageSize: true, printBackground: true })
+    await page.emulateMedia({ media: 'screen' }); await page.evaluate(() => window.dispatchEvent(new Event('afterprint')))
+    await page.locator('.sidebar').getByRole('button', { name: /Caja y recepción/ }).click()
+    await page.getByRole('heading', { name: 'Comprobantes recientes', exact: true }).waitFor()
+    assert.equal(errors.length, 0)
+    await fs.writeFile(path.join(output, 'resultado.json'), JSON.stringify({ passed: true, saleId: sale.id, errors,
+      checks: ['ticket sin identificación desde pedido hasta cobro e impresión', 'datos de Factura ocultos no enviados al cambiar a ticket',
+        'Boleta identificada requiere DNI', 'Factura inválida no llega al servidor', 'stock y marketing', 'Caja admite cliente null', 'vista móvil 390px'] }, null, 2))
+    console.log('PASS recibos: ticket sin datos, requisitos fiscales, stock, Caja, impresión 80mm y móvil.')
+  } finally { await browser.close() }
+}
+main().catch(error => { console.error(error); process.exitCode = 1 })
