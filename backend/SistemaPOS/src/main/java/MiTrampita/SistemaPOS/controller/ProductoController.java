@@ -1,6 +1,7 @@
 package MiTrampita.SistemaPOS.controller;
 
 import MiTrampita.SistemaPOS.entity.Producto;
+import MiTrampita.SistemaPOS.dto.ProductoRequest;
 import MiTrampita.SistemaPOS.service.ProductoService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,14 +27,15 @@ public class ProductoController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Producto crear(@Valid @RequestBody Producto producto) {
-        producto.setId(null);
+    public Producto crear(@Valid @RequestBody ProductoRequest request) {
+        Producto producto = request.toEntity();
+        producto.setVersion(null);
         return service.guardar(producto);
     }
 
     @PutMapping("/{id}")
-    public Producto actualizar(@PathVariable Integer id, @Valid @RequestBody Producto producto) {
-        return service.actualizar(id, producto);
+    public Producto actualizar(@PathVariable Integer id, @Valid @RequestBody ProductoRequest request) {
+        return service.actualizar(id, request.toEntity());
     }
 
     @DeleteMapping("/{id}")

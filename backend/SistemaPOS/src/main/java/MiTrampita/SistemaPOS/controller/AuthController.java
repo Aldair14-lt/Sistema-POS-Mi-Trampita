@@ -3,6 +3,8 @@ package MiTrampita.SistemaPOS.controller;
 import MiTrampita.SistemaPOS.entity.EstadoUsuario;
 import MiTrampita.SistemaPOS.repositorio.*;
 import MiTrampita.SistemaPOS.security.PosPrincipal;
+import MiTrampita.SistemaPOS.security.SessionCredentials;
+import MiTrampita.SistemaPOS.security.LoginAttemptLimiter;
 import jakarta.servlet.http.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -30,6 +32,9 @@ public class AuthController {
     private final PasswordEncoder passwords;
     private final SecurityContextRepository contexts;
     private final HttpSessionCsrfTokenRepository csrf;
+    private final LoginAttemptLimiter attempts;
+    // Realizar BCrypt también para usuarios inexistentes evita la diferencia evidente de tiempo.
+    private static final String DUMMY_HASH = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
     @GetMapping("/csrf")
     public CsrfResponse csrf(CsrfToken token) { return new CsrfResponse(token.getHeaderName(), token.getToken()); }
@@ -40,13 +45,26 @@ public class AuthController {
     @PostMapping("/login")
     @Transactional
     public PosPrincipal login(@Valid @RequestBody LoginRequest req, HttpServletRequest request, HttpServletResponse response) {
-        var user = usuarios.findByUsuarioIgnoreCase(req.usuario().trim()).orElseThrow(this::invalid);
+        attempts.check(request.getRemoteAddr(), req.usuario());
+        if (req.contrasena().getBytes(StandardCharsets.UTF_8).length > 72) {
+            attempts.failed(request.getRemoteAddr(), req.usuario());
+            throw invalid();
+        }
+        var user = usuarios.findByUsuarioIgnoreCase(req.usuario().trim()).orElse(null);
+        if (user == null) {
+            passwords.matches(req.contrasena(), DUMMY_HASH);
+            attempts.failed(request.getRemoteAddr(), req.usuario());
+            throw invalid();
+        }
         String stored = user.getContrasena();
         boolean hashed = stored.startsWith("$2");
         // Compatibilidad con el esquema antiguo: convertir a BCrypt al primer login válido.
         boolean matches = hashed ? passwords.matches(req.contrasena(), stored)
                 : MessageDigest.isEqual(req.contrasena().getBytes(StandardCharsets.UTF_8), stored.getBytes(StandardCharsets.UTF_8));
-        if (!matches || user.getEstado() != EstadoUsuario.activo) throw invalid();
+        if (!matches || user.getEstado() != EstadoUsuario.activo) {
+            attempts.failed(request.getRemoteAddr(), req.usuario());
+            throw invalid();
+        }
         var roles = usuarioRoles.findAllByUsuario_Id(user.getId()).stream()
                 .map(r -> PosPrincipal.canonicalRole(r.getRol().getNombre())).distinct().toList();
         if (roles.stream().allMatch(r -> r.equals("SIN_ACCESO")))
@@ -57,6 +75,8 @@ public class AuthController {
                 roles.stream().map(r -> new SimpleGrantedAuthority("ROLE_" + r)).toList());
         request.getSession();
         request.changeSessionId();
+        SessionCredentials.remember(request.getSession(), user.getContrasena());
+        attempts.succeeded(req.usuario());
         csrf.saveToken(null, request, response);
         var context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(auth);

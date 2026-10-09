@@ -28,17 +28,24 @@ public class DetalleVenta {
     @JoinColumn(name = "id_producto", nullable = false)
     private Producto producto;
     @Min(1)
+    @jakarta.validation.constraints.NotNull
     @Column(nullable = false)
     private Integer cantidad = 1;
     @Column(name = "precio_unitario", nullable = false, precision = 10, scale = 2)
+    @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.DecimalMin("0.00")
+    @jakarta.validation.constraints.Digits(integer = 8, fraction = 2)
     private BigDecimal precioUnitario = BigDecimal.ZERO;
     @Column(nullable = false, precision = 10, scale = 2)
+    @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.DecimalMin("0.00")
+    @jakarta.validation.constraints.Digits(integer = 8, fraction = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;
     @Enumerated(EnumType.STRING) @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "area_destino", nullable = false, length = 10)
     private AreaDestino areaDestino = AreaDestino.COCINA;
     @Column(name = "observaciones", nullable = false, length = 255)
     private String observaciones = "";
+    @Column(name = "clave_comanda", length = 36)
+    private String claveComanda;
     @Enumerated(EnumType.STRING)
     @Column(name = "estado_preparacion", nullable = false, length = 20)
     @JdbcTypeCode(SqlTypes.VARCHAR)

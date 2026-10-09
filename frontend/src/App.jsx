@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Archive, ArrowRight, BadgeDollarSign, BarChart3, Boxes, BriefcaseBusiness, ChevronRight,
   CircleUserRound, ClipboardList, Command, LayoutDashboard, LogOut, Menu, Package,
@@ -41,7 +41,7 @@ function App() {
   const [view, setView] = useState('ventas')
   const [mobileNav, setMobileNav] = useState(false)
   useEffect(() => {
-    localStorage.removeItem('pos-session')
+    try { localStorage.removeItem('pos-session') } catch { /* Almacenamiento bloqueado. */ }
     api.list('/api/auth/me').then(data => { setSession(data); setView(defaultView(data)) }).catch(() => setSession(null)).finally(() => setChecking(false))
     const expired = () => setSession(null)
     window.addEventListener('pos-session-expired', expired)
@@ -120,7 +120,7 @@ function ResourceView({ resource }) {
   const [editing, setEditing] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const load = () => { setLoading(true); api.list(resource.endpoint).then(setItems).catch((err) => setError(err.message)).finally(() => setLoading(false)) }
+  const load = () => { setLoading(true); setError(''); api.list(resource.endpoint).then(setItems).catch((err) => setError(err.message)).finally(() => setLoading(false)) }
   useEffect(load, [resource.endpoint])
   const filtered = useMemo(() => items.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase())), [items, query])
   const openNew = () => { setEditing(null); setShowForm(true) }
@@ -161,6 +161,8 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
   }, [resource.label, item]);
 
   const [form, setForm] = useState(initialForm)
+  const [saving, setSaving] = useState(false)
+  const submitting = useRef(false)
   const [error, setError] = useState('')
   const [relations, setRelations] = useState({ categorias: [], marcas: [], proveedores: [], areas: [], roles: [] })
 
@@ -180,6 +182,7 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
   
   async function submit(event) {
     event.preventDefault()
+    if (submitting.current) return
     setError('')
     const requiredText = ['nombre', 'codigoBarras', 'nombresRazonSocial', 'numeroDocumento', 'rucDni', 'razonSocial', 'ruc', 'usuario', 'nombreCompleto', 'serie']
     if (resource.label === 'Configuración') requiredText.push('direccion')
@@ -194,8 +197,9 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
     const numericFields = ['precioCompra', 'precioVenta', 'stockActual', 'stockMinimo', 'numero', 'capacidad']
     if (numericFields.some((field) => field in form && (!Number.isFinite(Number(form[field])) || Number(form[field]) < 0))) return setError('Los precios y el stock deben ser números mayores o iguales a cero.')
     if (resource.label === 'Productos' && ['categoriaId', 'proveedorId'].some((field) => !Number.isInteger(Number(form[field])) || Number(form[field]) <= 0)) return setError('Selecciona categoría y proveedor.')
+    submitting.current = true; setSaving(true)
     try {
-      const cleanForm = Object.fromEntries(Object.entries(form).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]))
+      const cleanForm = Object.fromEntries(Object.entries(form).map(([key, value]) => [key, typeof value === 'string' && key !== 'contrasena' ? value.trim() : value]))
       const payload = resource.label === 'Productos' ? {
         ...(item ? { version: item.version } : {}),
         categoria: { id: Number(form.categoriaId) }, 
@@ -219,7 +223,7 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
       onSaved();
     } catch (err) { 
       setError(err.message || 'No se pudo guardar el registro.')
-    } 
+    } finally { submitting.current = false; setSaving(false) }
   }
   
   const fields = Object.keys(form)
@@ -253,10 +257,10 @@ function ResourceForm({ resource, item, onClose, onSaved }) {
       }
 
       return <label key={field}>{labelText}
-        <input required={isRequired} min={['numero', 'capacidad'].includes(field) ? 1 : isNumber ? 0 : undefined} minLength={field === 'contrasena' ? 8 : undefined} maxLength={field === 'contrasena' ? 72 : undefined} type={field === 'fechaNacimiento' ? 'date' : field.toLowerCase().includes('contrase') ? 'password' : isNumber ? 'number' : field === 'correo' || field === 'correoElectronico' ? 'email' : 'text'} value={form[field]} onChange={(event) => update(field, event.target.value)} />
+        <input required={isRequired} disabled={saving} step={field.toLowerCase().includes('precio') ? '0.01' : isNumber ? '1' : undefined} min={['numero', 'capacidad'].includes(field) ? 1 : isNumber ? 0 : undefined} minLength={field === 'contrasena' ? 8 : undefined} maxLength={field === 'contrasena' ? 72 : undefined} type={field === 'fechaNacimiento' ? 'date' : field.toLowerCase().includes('contrase') ? 'password' : isNumber ? 'number' : field === 'correo' || field === 'correoElectronico' ? 'email' : 'text'} value={form[field]} onChange={(event) => update(field, event.target.value)} />
       </label>
     })}
-    {error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit">Guardar <ArrowRight size={16} /></button></div></form></section></div>
+    {error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" disabled={saving} onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar'} <ArrowRight size={16} /></button></div></form></section></div>
 }
 
 function Sales({ session }) { return <SalesPos session={session} /> }

@@ -16,6 +16,8 @@ import java.util.List;
 public class ProductoService {
     private final ProductoRepository repository;
     private final MarcaRepository marcas;
+    private final MiTrampita.SistemaPOS.repositorio.CategoriaRepository categorias;
+    private final MiTrampita.SistemaPOS.repositorio.ProveedorRepository proveedores;
 
     @Transactional(readOnly = true)
     public List<Producto> listar() {
@@ -30,13 +32,21 @@ public class ProductoService {
 
     @Transactional
     public Producto guardar(Producto producto) {
+        if (producto.getCategoria() == null || producto.getCategoria().getId() == null
+                || producto.getProveedor() == null || producto.getProveedor().getId() == null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecciona categoría y proveedor válidos");
+        producto.setCategoria(categorias.findById(producto.getCategoria().getId()).orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.BAD_REQUEST, "Categoría no encontrada")));
+        producto.setProveedor(proveedores.findById(producto.getProveedor().getId()).orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.BAD_REQUEST, "Proveedor no encontrado")));
         if (producto.getMarca() == null || producto.getMarca().getId() == null || producto.getMarca().getId() <= 0) {
             producto.setMarca(marcas.findByNombreIgnoreCase("Sin marca").orElseGet(() -> {
                 Marca marca = new Marca();
                 marca.setNombre("Sin marca");
                 return marcas.save(marca);
             }));
-        }
+        } else producto.setMarca(marcas.findById(producto.getMarca().getId()).orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.BAD_REQUEST, "Marca no encontrada")));
         return repository.save(producto);
     }
 

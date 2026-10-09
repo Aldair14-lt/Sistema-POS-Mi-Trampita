@@ -30,6 +30,7 @@ public class CatalogoController {
     @PostMapping("/categorias")
     @ResponseStatus(HttpStatus.CREATED)
     public Categoria crearCategoria(@Valid @RequestBody Categoria value) {
+        value.setId(null);
         return categorias.save(value);
     }
 
@@ -47,6 +48,7 @@ public class CatalogoController {
     @PostMapping("/marcas")
     @ResponseStatus(HttpStatus.CREATED)
     public Marca crearMarca(@Valid @RequestBody Marca value) {
+        value.setId(null);
         return marcas.save(value);
     }
 
@@ -64,6 +66,7 @@ public class CatalogoController {
     @PostMapping("/proveedores")
     @ResponseStatus(HttpStatus.CREATED)
     public Proveedor crearProveedor(@Valid @RequestBody Proveedor value) {
+        value.setId(null);
         return proveedores.save(value);
     }
 
@@ -114,6 +117,7 @@ public class CatalogoController {
     @PostMapping({"/configuracion", "/empresas"})
     @ResponseStatus(HttpStatus.CREATED)
     public Empresa crearEmpresa(@Valid @RequestBody Empresa value) {
+        value.setId(null);
         return empresas.save(value);
     }
 
@@ -131,6 +135,7 @@ public class CatalogoController {
     @PostMapping("/tipos-comprobante")
     @ResponseStatus(HttpStatus.CREATED)
     public TipoComprobante crearComprobante(@Valid @RequestBody TipoComprobante value) {
+        validarTipoComprobante(value);
         value.setId(null);
         value.setUltimoCorrelativo(0L);
         return comprobantes.save(value);
@@ -139,6 +144,7 @@ public class CatalogoController {
     @PutMapping("/tipos-comprobante/{id}")
     @org.springframework.transaction.annotation.Transactional
     public TipoComprobante actualizarComprobante(@PathVariable Integer id, @Valid @RequestBody TipoComprobante value) {
+        validarTipoComprobante(value);
         var current = comprobantes.findByIdForUpdate(id).orElseThrow(() ->
             new ResponseStatusException(HttpStatus.NOT_FOUND, "Tipo de comprobante no encontrado"));
         if (current.getUltimoCorrelativo() > 0 &&
@@ -148,6 +154,13 @@ public class CatalogoController {
         current.setSerie(value.getSerie());
         current.setDescripcion(value.getDescripcion());
         return current;
+    }
+
+    private void validarTipoComprobante(TipoComprobante value) {
+        try { TipoDocumento.desdeCatalogo(value.getNombre()); }
+        catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecciona NOTA DE VENTA, BOLETA o FACTURA");
+        }
     }
 
     @GetMapping("/roles")

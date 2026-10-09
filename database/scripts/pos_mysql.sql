@@ -1,15 +1,16 @@
 -- ============================================================================
--- POS MI TRAMPITA — SCRIPT ÚNICO PARA MYSQL 8.0.16+ (VERSIONES 01 A 09)
+-- POS MI TRAMPITA — SCRIPT ÚNICO PARA MYSQL 8.0.16+ (VERSIONES 01 A 10)
 --
 -- Base nueva: ejecutar el archivo completo; crea y selecciona pos_db.
 -- Base existente: respaldo previo, backend detenido y solo migraciones pendientes
--- (03 a 09), nunca la sección de instalación.
--- Si ya tiene 04: ejecutar las secciones 05, 06, 07, 08 y 09 de este mismo archivo.
--- Si ya tiene 05: ejecutar las secciones 06, 07, 08 y 09 de este mismo archivo.
--- Si ya tiene 06: ejecutar las secciones 07, 08 y 09.
--- Si ya tiene 07: ejecutar las secciones 08 y 09.
--- Si ya tiene 08: ejecutar solamente la sección 09.
--- Si ya tiene 09: no ejecutar ninguna sección; la base ya está actualizada.
+-- (03 a 10), nunca la sección de instalación.
+-- Si ya tiene 04: ejecutar las secciones 05, 06, 07, 08, 09 y 10 de este mismo archivo.
+-- Si ya tiene 05: ejecutar las secciones 06, 07, 08, 09 y 10 de este mismo archivo.
+-- Si ya tiene 06: ejecutar las secciones 07, 08, 09 y 10.
+-- Si ya tiene 07: ejecutar las secciones 08, 09 y 10.
+-- Si ya tiene 08: ejecutar las secciones 09 y 10.
+-- Si ya tiene 09: ejecutar solamente la sección 10.
+-- Si ya tiene 10: no ejecutar ninguna sección; la base ya está actualizada.
 -- Cada sección termina antes del siguiente encabezado numerado.
 -- No repetir migraciones: se protege el inventario contra dobles descuentos.
 -- MySQL confirma DDL implícitamente; restaurar el respaldo si falla a medias.
@@ -544,3 +545,30 @@ END$$
 DELIMITER ;
 CALL migrar_pos_09();
 DROP PROCEDURE migrar_pos_09;
+
+-- 10. COMANDAS ADICIONALES IDEMPOTENTES. Requiere 09; backend detenido.
+-- El DDL MySQL confirma implícitamente; conservar el respaldo antes de migrar.
+DROP PROCEDURE IF EXISTS migrar_pos_10;
+DELIMITER $$
+CREATE PROCEDURE migrar_pos_10()
+BEGIN
+  IF EXISTS(SELECT 1 FROM pos_migraciones WHERE version='10_comandas_idempotentes') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='La migración 10 ya fue aplicada';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='09_menu_publico_pedidos_web') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Primero aplica la migración 09';
+  END IF;
+  CREATE TABLE operaciones_comanda (
+    id_operacion INT AUTO_INCREMENT PRIMARY KEY, id_venta INT NOT NULL,
+    clave_operacion VARCHAR(36) NOT NULL, huella VARCHAR(64) NOT NULL,
+    fecha_creacion TIMESTAMP(6) NOT NULL,
+    CONSTRAINT fk_comanda_venta FOREIGN KEY(id_venta) REFERENCES ventas(id_venta),
+    CONSTRAINT uk_comanda_operacion UNIQUE(id_venta,clave_operacion)
+  ) ENGINE=InnoDB;
+  ALTER TABLE detalle_venta ADD COLUMN clave_comanda VARCHAR(36);
+  CREATE INDEX idx_detalle_comanda ON detalle_venta(id_venta,clave_comanda);
+  INSERT INTO pos_migraciones(version) VALUES('10_comandas_idempotentes');
+END$$
+DELIMITER ;
+CALL migrar_pos_10();
+DROP PROCEDURE migrar_pos_10;

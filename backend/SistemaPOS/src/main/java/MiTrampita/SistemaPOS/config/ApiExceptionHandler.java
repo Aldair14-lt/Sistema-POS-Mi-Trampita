@@ -53,6 +53,9 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ApiError> responseStatus(ResponseStatusException exception) {
+        if (exception.getStatusCode().value() == 429)
+            return ResponseEntity.status(429).header("Retry-After", "60")
+                .body(new ApiError(429, exception.getReason()));
         return error(exception.getStatusCode(), exception.getReason() == null ? "Solicitud inválida" : exception.getReason());
     }
 

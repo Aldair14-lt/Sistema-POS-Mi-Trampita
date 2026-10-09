@@ -49,6 +49,112 @@ class PosFlowTests {
     @Autowired TipoComprobanteRepository comprobantes;
     private static final AtomicInteger sequence = new AtomicInteger(1000);
 
+    @Test void catalogoRechazaTiposDeComprobanteQueNoSePuedenEmitir() throws Exception {
+        mvc.perform(post("/api/tipos-comprobante").session(login(user("ADMIN"))).with(csrf()).contentType("application/json")
+            .content("{\"nombre\":\"RECIBO_NO_SOPORTADO\",\"serie\":\"X001\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test void comprobanteHistoricoInvalidoNoAbreCuentaNiDescuentaStock() {
+        var f = fixture(4); var tipo = new TipoComprobante();
+        tipo.setNombre("RECIBO_NO_SOPORTADO"); tipo.setSerie("X" + sequence.incrementAndGet()); comprobantes.save(tipo);
+        long count = ventas.count();
+        assertThatThrownBy(() -> service.registrar(new VentaRequest(f.empresa().getId(), f.cliente().getId(), null,
+            tipo.getId(), "QA-" + UUID.randomUUID(), f.mesa().getId(), List.of(new ItemRequest(f.primero().getId(), 1))), f.usuario().getId()))
+            .hasMessageContaining("comprobante soportado");
+        assertThat(ventas.count()).isEqualTo(count);
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(4);
+        assertThat(mesas.findById(f.mesa().getId()).orElseThrow().getEstado()).isEqualTo(EstadoMesa.LIBRE);
+    }
+
+    @Test void mozoNoPuedeAgregarProductosAUnaCuentaExternaPorId() throws Exception {
+        var f = fixture(5);
+        var venta = service.registrar(new VentaRequest(f.empresa().getId(), f.cliente().getId(), null,
+            boletaWeb().tipoComprobanteId(), "QA-" + UUID.randomUUID(), null, List.of(new ItemRequest(f.primero().getId(), 1)),
+            OrigenPedido.WHATSAPP, TipoEntrega.RECOJO, null, "999888777", null, false), f.usuario().getId());
+        mvc.perform(patch("/api/ventas/" + venta.getId() + "/items").session(login(f.usuario())).with(csrf()).contentType("application/json")
+            .content("{\"claveOperacion\":\"" + UUID.randomUUID() + "\",\"items\":[{\"productoId\":" + f.primero().getId() + ",\"cantidad\":1}]}"))
+            .andExpect(status().isForbidden());
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(4);
+        assertThat(service.obtener(venta.getId()).getDetalles()).hasSize(1);
+    }
+    @Test void crearCatalogoConIdNoSobrescribeRegistrosExistentes() throws Exception {
+        var admin = login(user("ADMIN")); var categoria = categorias.findAll().getFirst(); String anterior = categoria.getNombre();
+        mvc.perform(post("/api/categorias").session(admin).with(csrf()).contentType("application/json")
+            .content("{\"id\":" + categoria.getId() + ",\"nombre\":\"Creación aislada " + sequence.incrementAndGet() + "\"}"))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.id").value(org.hamcrest.Matchers.not(categoria.getId())));
+        assertThat(categorias.findById(categoria.getId()).orElseThrow().getNombre()).isEqualTo(anterior);
+    }
+    @Test void productoRechazaReferenciasAnidadasInvalidasSinErrorInterno() throws Exception {
+        var f = fixture(3); var admin = login(user("ADMIN"));
+        String body = "{\"categoria\":{},\"proveedor\":{\"id\":" + f.primero().getProveedor().getId()
+            + "},\"codigoBarras\":\"QA-invalid\",\"nombre\":\"Prueba\",\"precioCompra\":0,\"precioVenta\":1.25,\"stockActual\":3,\"stockMinimo\":1}";
+        mvc.perform(post("/api/productos").session(admin).with(csrf()).contentType("application/json").content(body)).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/productos").session(admin).with(csrf()).contentType("application/json")
+            .content(body.replace("\"categoria\":{}", "\"categoria\":{\"id\":2147483647}"))).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/productos").session(admin).with(csrf()).contentType("application/json")
+            .content(body.replace("\"categoria\":{}", "\"categoria\":{\"id\":" + f.primero().getCategoria().getId() + "}")))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.precioVenta").value(1.25)).andExpect(jsonPath("$.visibleWeb").value(false));
+    }
+    @Test void cambiarContrasenaRevocaSesionAnteriorSinExponerCredenciales() throws Exception {
+        var user = user("MOZO"); var session = login(user);
+        mvc.perform(get("/api/auth/me").session(session)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.contrasena").doesNotExist()).andExpect(jsonPath("$.credential").doesNotExist());
+        var saved = usuarios.findById(user.getId()).orElseThrow(); saved.setContrasena("newpass123"); usuarios.save(saved);
+        mvc.perform(get("/api/mesas").session(session)).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/login").with(csrf()).contentType("application/json")
+            .content("{\"usuario\":\"" + user.getUsuario() + "\",\"contrasena\":\"testpass123\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+    @Test void loginNoAceptaAliasPorTruncamientoBcryptNiDevuelve500() throws Exception {
+        var user = user("MOZO"); login(user);
+        mvc.perform(post("/api/auth/login").with(csrf()).contentType("application/json")
+            .content("{\"usuario\":\"" + user.getUsuario() + "\",\"contrasena\":\"" + "á".repeat(50) + "\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+    @Test void loginLimitaFallosPorUsuarioYDireccionSinBloqueoPermanente() {
+        var limiter = new MiTrampita.SistemaPOS.security.LoginAttemptLimiter();
+        for (int i = 0; i < 5; i++) { limiter.check("192.0.2.1", "CaseUser"); limiter.failed("192.0.2.1", "CaseUser"); }
+        assertThatThrownBy(() -> limiter.check("192.0.2.2", "caseuser")).isInstanceOf(org.springframework.web.server.ResponseStatusException.class).hasMessageContaining("429");
+        limiter.succeeded("CASEUSER"); limiter.check("192.0.2.1", "CaseUser");
+        for (int i = 0; i < 30; i++) limiter.failed("192.0.2.3", "user" + i);
+        assertThatThrownBy(() -> limiter.check("192.0.2.3", "new-user")).hasMessageContaining("429");
+    }
+    @Test void cuerposGrandesSeRechazanAntesDeJacksonTambienEnLogin() throws Exception {
+        mvc.perform(post("/api/auth/login").with(csrf()).contentType("application/json").content(" ".repeat(4097))).andExpect(status().is(413));
+        mvc.perform(post("/api/productos").with(csrf()).contentType("application/json").content(" ".repeat(262145))).andExpect(status().is(413));
+    }
+    @Test void conexionesSseSonAcotadasPorUsuarioYRenuevanLaSesion() {
+        var events = new OperationEvents();
+        for (int i = 0; i < 6; i++) assertThat(events.subscribe(false, 1).getTimeout()).isEqualTo(300000L);
+        assertThatThrownBy(() -> events.subscribe(true, 1)).hasMessageContaining("429");
+        assertThat(events.subscribe(true, 2)).isNotNull();
+    }
+    @Test void adicionalIdempotenteNoDuplicaLineasStockYRechazaCambiosDeContenido() {
+        var f = fixture(5); var sale = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 1)));
+        String key = UUID.randomUUID().toString(); var items = List.of(new ItemRequest(f.primero().getId(), 2, "Sin sal"));
+        service.agregarItems(sale.getId(), items, key); service.agregarItems(sale.getId(), items, key);
+        assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(2);
+        assertThat(service.obtener(sale.getId()).getDetalles()).hasSize(2).filteredOn(d -> key.equals(d.getClaveComanda())).hasSize(1);
+        assertThatThrownBy(() -> service.agregarItems(sale.getId(), List.of(new ItemRequest(f.primero().getId(), 1)), key)).hasMessageContaining("otros productos");
+    }
+    @Test void adicionalConcurrenteSeConfirmaUnaVezYRollbackNoConsumeSuClave() throws Exception {
+        var f = fixture(5); var sale = abrir(f, f.mesa(), List.of(new ItemRequest(f.primero().getId(), 1)));
+        String key = UUID.randomUUID().toString(); var items = List.of(new ItemRequest(f.primero().getId(), 2));
+        var start = new CountDownLatch(1); var pool = Executors.newFixedThreadPool(2);
+        try {
+            var first = pool.submit(() -> { start.await(); return service.agregarItems(sale.getId(), items, key).getId(); });
+            var second = pool.submit(() -> { start.await(); return service.agregarItems(sale.getId(), items, key).getId(); }); start.countDown();
+            assertThat(first.get(20, TimeUnit.SECONDS)).isEqualTo(second.get(20, TimeUnit.SECONDS));
+            assertThat(productos.findById(f.primero().getId()).orElseThrow().getStockActual()).isEqualTo(2);
+            String retry = UUID.randomUUID().toString(); var tooMany = List.of(new ItemRequest(f.primero().getId(), 3));
+            assertThatThrownBy(() -> service.agregarItems(sale.getId(), tooMany, retry)).isInstanceOf(StockInsuficienteException.class);
+            var product = productos.findById(f.primero().getId()).orElseThrow(); product.setStockActual(3); productos.save(product);
+            service.agregarItems(sale.getId(), tooMany, retry);
+            assertThat(productos.findById(product.getId()).orElseThrow().getStockActual()).isZero();
+        } finally { pool.shutdownNow(); }
+    }
+
     String tiendaWeb(Fixture f) {
         var p = productos.findById(f.primero().getId()).orElseThrow(); p.setVisibleWeb(true); productos.save(p);
         var bebida = productos.findById(f.segundo().getId()).orElseThrow(); bebida.setVisibleWeb(true); bebida.setAreaDestino(AreaDestino.BAR); productos.save(bebida);

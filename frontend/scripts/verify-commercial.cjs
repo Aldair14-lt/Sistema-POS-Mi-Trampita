@@ -6,7 +6,8 @@ const path = require('node:path')
 const password = process.env.POS_TEST_PASSWORD
 if (!password) throw new Error('Define POS_TEST_PASSWORD')
 const baseURL = process.env.POS_UI_URL || 'http://127.0.0.1:15198'
-const output = path.resolve(__dirname, '../../docs/validation/commercial08')
+assert(/^http:\/\/(127\.0\.0\.1|localhost):/.test(baseURL), 'Usar Vite QA local')
+const output = process.env.POS_VALIDATION_DIR || path.resolve(__dirname, '../../docs/validation/commercial08')
 
 async function main() {
   await fs.mkdir(output, { recursive: true })
@@ -162,7 +163,7 @@ async function main() {
     }
     assert.deepEqual(errors, [])
     await fs.writeFile(path.join(output, 'resultado.json'), JSON.stringify({ passed: true, viewport: [1440, 390], errors, companyId: company.id, saleId: charge.id, checks: ['apertura y arqueo', 'Yape parcial', 'efectivo y vuelto', 'factura A4', 'ticket 80mm', 'cierre A4', 'WhatsApp con adelanto', 'Kanban', 'cuatro colores de mesas', 'CSV Meta', 'roles y comandas Cocina/Bar sin precios'] }, null, 2))
-    console.log('PASS UI: caja, pagos, formatos, mesas, Kanban, CSV y roles de Cocina/Bar. Evidencias: docs/validation/commercial08')
+    console.log(`PASS UI: caja, pagos, formatos, mesas, Kanban, CSV y roles de Cocina/Bar. Evidencias: ${output}`)
   } catch (error) {
     const page = context.pages().at(-1)
     if (page) {

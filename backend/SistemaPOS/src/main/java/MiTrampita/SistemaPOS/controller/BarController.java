@@ -17,5 +17,8 @@ public class BarController {
     @PatchMapping("/items/{id}/estado") public KitchenItemResponse actualizar(@PathVariable Integer id, @Valid @RequestBody UpdateItemStatusRequest request) {
         return service.actualizar(id, request, false, AreaDestino.BAR);
     }
-    @GetMapping(value = "/eventos", produces = "text/event-stream") public SseEmitter eventos() { return events.subscribe(true); }
+    @GetMapping(value = "/eventos", produces = "text/event-stream") public SseEmitter eventos(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal MiTrampita.SistemaPOS.security.PosPrincipal user) {
+        return events.subscribe(true, user.id());
+    }
 }

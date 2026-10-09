@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle, CheckCircle2, FileText, Minus, Package, Plus, Printer, Search,
   ShoppingCart, UserRound, X
 } from 'lucide-react'
 import { api } from './api'
+import { storageRead, storageWrite } from './utils/storage'
 import { usePrint } from './components/PrintManager'
 import { permissions } from './permissions'
 import TablesView from './TablesView'
@@ -62,6 +63,17 @@ export default function SalesPos({ session }) {
   const [error, setError] = useState('')
   const [lastSale, setLastSale] = useState(null)
   const [notice, setNotice] = useState('')
+  const additionalKey = `pos-pending-additional-${session.id}`
+  const pendingAdditional = useRef(storageRead('sessionStorage', additionalKey, null))
+  const submitting = useRef(false)
+  const [uncertainAdditional, setUncertainAdditional] = useState(Boolean(pendingAdditional.current))
+  useEffect(() => {
+    const pending = pendingAdditional.current
+    if (loading || !pending) return
+    const sale = openSales.find(s => s.id === pending.saleId)
+    setActiveSaleId(String(pending.saleId)); setSelectedMesaId(String(sale?.mesa?.id || pending.mesaId || ''))
+    setCart(pending.cart || [])
+  }, [loading])
 
   useEffect(() => {
     setLoading(true)
@@ -164,7 +176,7 @@ export default function SalesPos({ session }) {
   }
 
   const selectOpenSale = (value) => {
-    if (saving) return
+    if (saving || uncertainAdditional) return
     if (cart.length) return setError('Envía o quita los productos pendientes antes de cambiar de mesa.')
     setActiveSaleId(value)
     setCart([])
@@ -191,6 +203,7 @@ export default function SalesPos({ session }) {
   }
 
   const selectMesa = async (mesa) => {
+    if (saving || uncertainAdditional) return
     if (cart.length && String(selectedMesaId) !== String(mesa.id)) return setError('Envía o quita los productos pendientes antes de cambiar de mesa.')
     if (String(selectedMesaId) === String(mesa.id)) return
     const sale = openSales.find((item) => item.mesa?.id === mesa.id)
@@ -213,7 +226,7 @@ export default function SalesPos({ session }) {
   }
 
   const addToCart = (product) => {
-    if (!canOrder || saving) return
+    if (!canOrder || saving || uncertainAdditional) return
     if (activeSale?.estadoCuenta === 'CERRADA') return setError('La cuenta ya está pagada. Finaliza la entrega y el cierre.')
     if (!selectedMesaId) return setError('Selecciona una mesa antes de tomar el pedido.')
     if (Number(product.stockActual) <= 0) return setError('Este producto no tiene stock disponible.')
@@ -230,7 +243,7 @@ export default function SalesPos({ session }) {
   }
 
   const updateQuantity = (id, delta) => {
-    if (saving) return
+    if (saving || uncertainAdditional) return
     setError('')
     setCart((current) => current.flatMap((item) => {
       if (item.id !== id) return [item]
@@ -243,10 +256,30 @@ export default function SalesPos({ session }) {
     }))
   }
 
-  const removeFromCart = (id) => !saving && setCart((current) => current.filter((item) => item.id !== id))
+  const removeFromCart = (id) => !saving && !uncertainAdditional && setCart((current) => current.filter((item) => item.id !== id))
+
+  const sendAdditional = async () => {
+    if (submitting.current) return
+    submitting.current = true; setSaving(true)
+    const pending = pendingAdditional.current
+    try {
+      const updated = await api.patch(`/api/ventas/${pending.saleId}/items`, pending.body)
+      setOpenSales(current => current.map(sale => sale.id === updated.id ? updated : sale).filter(sale => sale.estado === 'ABIERTA'))
+      setCart([])
+      setLastOrder({ ...updated, detalles: updated.detalles.filter(d => d.claveComanda === pending.body.claveOperacion) })
+      pendingAdditional.current = null; storageWrite('sessionStorage', additionalKey, null); setUncertainAdditional(false)
+      api.list('/api/productos').then(setProducts).catch(err => setError(err.message))
+      setNotice(`Adicional registrado una sola vez. Comanda ${updated.numeroComprobante} actualizada.`)
+    } catch (err) {
+      if (err.status === 0 || err.status >= 500) {
+        setUncertainAdditional(true); setError('No se confirmó la tanda. Reintenta la misma comanda para comprobarla sin duplicar stock.')
+      } else { pendingAdditional.current = null; storageWrite('sessionStorage', additionalKey, null); setUncertainAdditional(false); setError(err.message) }
+    } finally { submitting.current = false; setSaving(false) }
+  }
 
   const submitSale = async () => {
-    if (!canOrder || saving) return
+    if (!canOrder || saving || submitting.current) return
+    if (pendingAdditional.current) return sendAdditional()
     if (activeSale?.estadoCuenta === 'CERRADA') return setError('La cuenta ya está pagada. Finaliza la entrega y el cierre.')
     if (!selectedMesaId) return setError('Faltan datos de la mesa. Selecciona una mesa del salón.')
     if (activeSaleId && !activeSale) return setError('La comanda ya no está abierta. Vuelve a seleccionar la mesa.')
@@ -254,22 +287,10 @@ export default function SalesPos({ session }) {
     setNotice('')
     if (activeSale) {
       if (!cart.length) return setError('Agrega al menos un producto adicional.')
-      setSaving(true)
-      try {
-        const updatedSale = await api.patch(`/api/ventas/${activeSale.id}/items`, {
-          items: cart.map((item) => ({ productoId: item.id, cantidad: item.cantidad, observaciones: item.observaciones || '' }))
-        })
-        setOpenSales((current) => current.map((sale) => sale.id === updatedSale.id ? updatedSale : sale))
-        setCart([])
-        setLastOrder({ ...updatedSale, detalles: updatedSale.detalles })
-        api.list('/api/productos').then(setProducts).catch(err => setError(err.message))
-        setNotice(`Adicional registrado. Comanda ${updatedSale.numeroComprobante} actualizada.`)
-      } catch (err) {
-        setError(err.message || 'No se pudo actualizar la comanda.')
-      } finally {
-        setSaving(false)
-      }
-      return
+      pendingAdditional.current = { saleId: activeSale.id, mesaId: activeSale.mesa?.id, cart,
+        body: { claveOperacion: crypto.randomUUID(), items: cart.map(item => ({ productoId: item.id, cantidad: item.cantidad, observaciones: item.observaciones || '' })) } }
+      storageWrite('sessionStorage', additionalKey, pendingAdditional.current)
+      return sendAdditional()
     }
     const document = customer.numeroDocumento.trim()
     const name = customer.nombresRazonSocial.trim()
@@ -281,7 +302,7 @@ export default function SalesPos({ session }) {
     if (isInvoice && !/^\d{11}$/.test(document)) return setError('Para una factura debes ingresar un RUC de 11 dígitos.')
     if (isInvoice && !customer.direccion.trim()) return setError('La dirección es obligatoria para una factura.')
     if (customer.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.correo)) return setError('El correo del cliente no es válido.')
-    setSaving(true)
+    submitting.current = true; setSaving(true)
     try {
       const sale = await api.create('/api/ventas', {
         empresaId: empresas[0].id,
@@ -310,6 +331,7 @@ export default function SalesPos({ session }) {
     } catch (err) {
       setError(err.message || 'No se pudo registrar la venta.')
     } finally {
+      submitting.current = false
       setSaving(false)
     }
   }
@@ -363,7 +385,7 @@ export default function SalesPos({ session }) {
     </div>
     <div className="cashier-toolbar"><button className="secondary-button sound-button" aria-pressed={alerts.sound} onClick={alerts.toggleSound}>{alerts.sound ? <Volume2 size={16} /> : <VolumeX size={16} />}{alerts.sound ? 'Sonido activo' : 'Activar sonido'}</button></div>
     {alerts.incoming > 0 && <div className="operation-alert" role="status"><span>{alerts.incoming} plato(s) listo(s) para recoger en cocina.</span><button onClick={alerts.dismiss}>Entendido</button></div>}
-    <TablesView areas={areas} mesas={mesas} openSales={openSales} selectedMesaId={selectedMesaId} onSelect={selectMesa} disabled={saving} />
+    <TablesView areas={areas} mesas={mesas} openSales={openSales} selectedMesaId={selectedMesaId} onSelect={selectMesa} disabled={saving || uncertainAdditional} />
     {selectedMesaId && !activeSale && <div className="table-actions">
       {canOrder && mesas.find(mesa => String(mesa.id) === String(selectedMesaId))?.estado === 'LIBRE' && <button className="secondary-button" disabled={saving} onClick={() => changeTableState('abrir')}>Ocupar mesa</button>}
       {canCharge && mesas.find(mesa => String(mesa.id) === String(selectedMesaId))?.estado === 'OCUPADA' && <button className="secondary-button" disabled={saving} onClick={() => changeTableState('liberar')}>Liberar mesa sin pedido</button>}
@@ -379,7 +401,7 @@ export default function SalesPos({ session }) {
           <div className="catalog-filter-row"><strong>Bebidas por marca</strong><button type="button" className={!brandFilter ? 'filter-chip active' : 'filter-chip'} onClick={() => setBrandFilter('')}>Todas</button>{brands.filter((brand) => brand.nombre?.toLowerCase() !== 'sin marca').map((brand) => <button type="button" className={String(brand.id) === String(brandFilter) ? 'filter-chip active' : 'filter-chip'} key={brand.id} onClick={() => setBrandFilter(String(brand.id))}>{brand.nombre}</button>)}</div>
         </div>
         <div className="product-grid">
-          {filteredProducts.map((product) => <button type="button" className="product-card" key={product.id} onClick={() => addToCart(product)} disabled={saving || product.stockActual <= 0 || activeSale?.estadoCuenta === 'CERRADA'}>
+          {filteredProducts.map((product) => <button type="button" className="product-card" key={product.id} onClick={() => addToCart(product)} disabled={saving || uncertainAdditional || product.stockActual <= 0 || activeSale?.estadoCuenta === 'CERRADA'}>
             <div className="product-card-top"><Package size={19} /><strong>S/ {formatMoney(product.precioVenta)}</strong></div>
             <strong>{product.nombre}</strong><small>{product.codigoBarras}</small>
             <span className={product.stockActual <= product.stockMinimo ? 'stock-warning' : 'stock-ok'}>Stock: {product.stockActual}</span>
@@ -391,7 +413,7 @@ export default function SalesPos({ session }) {
       <section className="panel pos-checkout">
         <div className="panel-head"><div><span className="eyebrow">{activeSale ? 'Comanda abierta' : canOrder ? 'Pedido' : 'Caja'}</span><h3>{activeSale ? `Mesa ${activeSale.mesa?.numero}` : canOrder ? `Carrito (${cart.length})` : 'Selecciona una comanda'}</h3></div><ShoppingCart size={20} className="accent-icon" /></div>
         <div className="cart-list">
-          <label className="open-sale-selector"><span>Venta / mesa</span><select value={activeSaleId} onChange={(event) => selectOpenSale(event.target.value)}><option value="">Nueva venta {selectedMesaId ? `· Mesa ${mesas.find((mesa) => String(mesa.id) === String(selectedMesaId))?.numero || ''}` : '· Selecciona una mesa'}</option>{openSales.map((sale) => <option key={sale.id} value={sale.id}>Mesa {sale.mesa?.numero || 'sin mesa'} · {sale.numeroComprobante} · S/ {formatMoney(sale.total)}</option>)}</select></label>
+          <label className="open-sale-selector"><span>Venta / mesa</span><select disabled={saving || uncertainAdditional} value={activeSaleId} onChange={(event) => selectOpenSale(event.target.value)}><option value="">Nueva venta {selectedMesaId ? `· Mesa ${mesas.find((mesa) => String(mesa.id) === String(selectedMesaId))?.numero || ''}` : '· Selecciona una mesa'}</option>{openSales.map((sale) => <option key={sale.id} value={sale.id}>Mesa {sale.mesa?.numero || 'sin mesa'} · {sale.numeroComprobante} · S/ {formatMoney(sale.total)}</option>)}</select></label>
           {activeSale && <div className="open-sale-summary"><strong>Pedido actual</strong>{(activeSale.detalles || []).map(detail => <div key={detail.id} className="sale-item-status">
             <span>{detail.cantidad} × {detail.producto?.nombre || 'Producto'}<OrderStatus state={detail.estadoPreparacion} /></span>
             <b>S/ {formatMoney(detail.subtotal)}</b>
@@ -405,9 +427,9 @@ export default function SalesPos({ session }) {
             }} />}
           </div>)}</div>}
           {!cart.length ? (!activeSale && <EmptyPos text={canOrder ? 'Agrega productos para comenzar.' : 'Selecciona una mesa con comanda abierta.'} />) : cart.map((item) => <div className="cart-item" key={item.id}>
-            <div className="cart-item-info"><strong>{item.nombre}</strong><small>S/ {formatMoney(item.precioVenta)} c/u · stock {item.stockActual} · {item.areaDestino}</small><label>Observaciones<input maxLength={255} disabled={saving} value={item.observaciones || ''} onChange={e => setCart(current => current.map(p => p.id === item.id ? { ...p, observaciones: e.target.value } : p))} placeholder="Sin ají, sin hielo…" /></label></div>
-            <div className="quantity-control"><button type="button" onClick={() => updateQuantity(item.id, -1)}><Minus size={13} /></button><b>{item.cantidad}</b><button type="button" onClick={() => updateQuantity(item.id, 1)}><Plus size={13} /></button></div>
-            <button type="button" className="icon-button" onClick={() => removeFromCart(item.id)} title="Quitar producto"><X size={15} /></button>
+            <div className="cart-item-info"><strong>{item.nombre}</strong><small>S/ {formatMoney(item.precioVenta)} c/u · stock {item.stockActual} · {item.areaDestino}</small><label>Observaciones<input maxLength={255} disabled={saving || uncertainAdditional} value={item.observaciones || ''} onChange={e => setCart(current => current.map(p => p.id === item.id ? { ...p, observaciones: e.target.value } : p))} placeholder="Sin ají, sin hielo…" /></label></div>
+            <div className="quantity-control"><button type="button" disabled={saving || uncertainAdditional} onClick={() => updateQuantity(item.id, -1)}><Minus size={13} /></button><b>{item.cantidad}</b><button type="button" disabled={saving || uncertainAdditional} onClick={() => updateQuantity(item.id, 1)}><Plus size={13} /></button></div>
+            <button type="button" className="icon-button" disabled={saving || uncertainAdditional} onClick={() => removeFromCart(item.id)} title="Quitar producto"><X size={15} /></button>
           </div>)}
         </div>
 
@@ -439,7 +461,8 @@ export default function SalesPos({ session }) {
           {lastOrder && canOrder && <div className="command-print-actions">{['COCINA', 'BAR'].map(area => <button type="button" className="secondary-button" key={area} onClick={() => printTicket(lastOrder, 'COMANDA', area)}><Printer size={15} />Comanda {area}</button>)}</div>}
           {lastOrder && canOrder && <button type="button" className="secondary-button full" onClick={() => printTicket(lastOrder, 'COMANDA')}><Printer size={15} /> Imprimir comanda completa</button>}
           {lastSale && canCharge && <div className="sale-success"><CheckCircle2 size={16} /><span>Venta cobrada.</span><button type="button" className="print-sale-button" onClick={() => printTicket(lastSale, 'COMPROBANTE')}><Printer size={15} /> Imprimir comprobante</button></div>}
-          {canOrder && <button type="button" className="primary-button full" onClick={submitSale} disabled={saving || !cart.length || activeSale?.estadoCuenta === 'CERRADA'}>{saving ? 'Guardando pedido...' : activeSale ? `Enviar adicional S/ ${formatMoney(additionalTotal)}` : `Enviar comanda S/ ${formatMoney(total)}`}</button>}
+          {uncertainAdditional && <p role="status">Hay una tanda pendiente de comprobar. Se conservarán sus productos y su clave al reintentar.</p>}
+          {canOrder && <button type="button" className="primary-button full" onClick={submitSale} disabled={saving || (!uncertainAdditional && (!cart.length || activeSale?.estadoCuenta === 'CERRADA'))}>{saving ? 'Guardando pedido...' : uncertainAdditional ? 'Comprobar / reintentar comanda' : activeSale ? `Enviar adicional S/ ${formatMoney(additionalTotal)}` : `Enviar comanda S/ ${formatMoney(total)}`}</button>}
           {canOrder && activeSale && <button type="button" className="secondary-button full" disabled={saving || cart.length > 0 || activeSale.cuentaSolicitada || activeSale.detalles.some(item => !['SERVIDO', 'CANCELADO'].includes(item.estadoPreparacion))} onClick={requestBill}>{activeSale.cuentaSolicitada ? 'Cuenta solicitada a Caja' : 'Solicitar cuenta a Caja'}</button>}
           {canCharge && activeSale && <button type="button" className="secondary-button full" onClick={() => setPaymentId(activeSale.id)} disabled={saving || cart.length > 0}>Pagos parciales / cerrar cuenta</button>}
         </div>

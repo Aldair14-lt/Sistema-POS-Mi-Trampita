@@ -1,15 +1,16 @@
 -- ============================================================================
--- POS MI TRAMPITA — SCRIPT ÚNICO PARA POSTGRESQL 14+ (VERSIONES 01 A 09)
+-- POS MI TRAMPITA — SCRIPT ÚNICO PARA POSTGRESQL 14+ (VERSIONES 01 A 10)
 --
 -- Base nueva: crear pos_db, conectarse a ella y ejecutar este archivo completo.
 -- Base existente: respaldo previo y ejecutar solo las migraciones pendientes
--- (03 a 09), nunca la sección de instalación.
--- Si ya tiene 04: ejecutar las secciones 05, 06, 07, 08 y 09 de este mismo archivo.
--- Si ya tiene 05: ejecutar las secciones 06, 07, 08 y 09 de este mismo archivo.
--- Si ya tiene 06: ejecutar las secciones 07, 08 y 09.
--- Si ya tiene 07: ejecutar las secciones 08 y 09.
--- Si ya tiene 08: ejecutar solamente la sección 09.
--- Si ya tiene 09: no ejecutar ninguna sección; la base ya está actualizada.
+-- (03 a 10), nunca la sección de instalación.
+-- Si ya tiene 04: ejecutar las secciones 05, 06, 07, 08, 09 y 10 de este mismo archivo.
+-- Si ya tiene 05: ejecutar las secciones 06, 07, 08, 09 y 10 de este mismo archivo.
+-- Si ya tiene 06: ejecutar las secciones 07, 08, 09 y 10.
+-- Si ya tiene 07: ejecutar las secciones 08, 09 y 10.
+-- Si ya tiene 08: ejecutar las secciones 09 y 10.
+-- Si ya tiene 09: ejecutar solamente la sección 10.
+-- Si ya tiene 10: no ejecutar ninguna sección; la base ya está actualizada.
 -- Cada sección termina antes del siguiente encabezado numerado.
 -- No repetir migraciones: se protege el inventario contra dobles descuentos.
 -- Backend detenido. Las migraciones 04, 05, 06 y 07 son transaccionales.
@@ -526,4 +527,26 @@ CREATE INDEX idx_web_telefono ON solicitudes_web(id_empresa,telefono,estado,fech
 CREATE INDEX idx_web_items_solicitud ON solicitud_web_items(id_solicitud);
 -- No se publican productos ni se activan tiendas sin configuración del ADMIN.
 INSERT INTO pos_migraciones(version) VALUES('09_menu_publico_pedidos_web');
+COMMIT;
+
+-- 10. COMANDAS ADICIONALES IDEMPOTENTES. Requiere 09; backend detenido.
+BEGIN;
+DO $$ BEGIN
+  IF EXISTS(SELECT 1 FROM pos_migraciones WHERE version='10_comandas_idempotentes') THEN
+    RAISE EXCEPTION 'La migración 10 ya fue aplicada';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pos_migraciones WHERE version='09_menu_publico_pedidos_web') THEN
+    RAISE EXCEPTION 'Primero aplica la migración 09';
+  END IF;
+END $$;
+CREATE TABLE operaciones_comanda (
+  id_operacion SERIAL PRIMARY KEY, id_venta INT NOT NULL REFERENCES ventas(id_venta),
+  clave_operacion VARCHAR(36) NOT NULL, huella VARCHAR(64) NOT NULL,
+  fecha_creacion TIMESTAMPTZ NOT NULL,
+  CONSTRAINT uk_comanda_operacion UNIQUE(id_venta,clave_operacion)
+);
+ALTER TABLE detalle_venta ADD COLUMN clave_comanda VARCHAR(36);
+CREATE INDEX idx_detalle_comanda ON detalle_venta(id_venta,clave_comanda);
+-- Los detalles anteriores conservan sus datos y no se asignan a tandas ficticias.
+INSERT INTO pos_migraciones(version) VALUES('10_comandas_idempotentes');
 COMMIT;

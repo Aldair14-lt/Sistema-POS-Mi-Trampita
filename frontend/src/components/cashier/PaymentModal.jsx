@@ -5,6 +5,7 @@ import usePolling from '../../hooks/usePolling'
 import { money } from '../OrderStatus'
 import '../../styles/cashier.css'
 import { usePrint } from '../PrintManager'
+import { restorePayment, persistPayment } from '../../utils/pendingOperation'
 
 const methods = [['efectivo', 'Efectivo', Banknote], ['yape', 'Yape', Smartphone], ['plin', 'Plin', Smartphone], ['tarjeta', 'Tarjeta', CreditCard]]
 const receipts = [['NOTA_VENTA', 'Ticket simple'], ['BOLETA', 'Boleta'], ['FACTURA', 'Factura']]
@@ -27,8 +28,8 @@ export default function PaymentModal({ saleId, onClose, onUpdated }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [uncertain, setUncertain] = useState(false)
-  const pending = useRef(null), dialog = useRef(null)
+  const [uncertain, setUncertain] = useState(() => Boolean(restorePayment(saleId)))
+  const pending = useRef(restorePayment(saleId)), dialog = useRef(null)
   const saldo = Number(sale?.saldoPendiente || 0)
   const complete = !sale?.mesa || sale.detalles.every(item => ['SERVIDO', 'CANCELADO'].includes(item.estadoPreparacion))
   const totalMode = mode === 'total' || saldo === 0
@@ -61,7 +62,7 @@ export default function PaymentModal({ saleId, onClose, onUpdated }) {
     else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog.current)) { event.preventDefault(); first?.focus() }
   }
   const confirm = async updated => {
-    pending.current = null; setUncertain(false); setAmount(''); setReceived(''); setReference('')
+    pending.current = null; persistPayment(saleId, null); setUncertain(false); setAmount(''); setReceived(''); setReference('')
     onUpdated(updated)
     if (updated.estado === 'CERRADA') { if (printAfter && updated.comprobante) await print({ type: 'RECEIPT', format, sale: updated }); onClose() }
     else { setNotice('Abono registrado. El saldo se actualizó.'); await refresh() }
@@ -84,6 +85,7 @@ export default function PaymentModal({ saleId, onClose, onUpdated }) {
         dni: receipt === 'BOLETA' && fiscal.dni ? fiscal.dni : null,
         nombreCliente: receipt === 'BOLETA' ? fiscal.nombreCliente.trim() : null }
       pending.current = { path: `/api/ventas/${saleId}/${totalMode ? 'cobrar' : 'pagos'}`, body: totalMode ? { pago: payment, facturacion } : payment, key: payment?.claveOperacion, closes: totalMode }
+      persistPayment(saleId, pending.current)
     }
     submitting.current = true; setBusy(true)
     try { await confirm(await api.create(pending.current.path, pending.current.body)) }
@@ -94,16 +96,17 @@ export default function PaymentModal({ saleId, onClose, onUpdated }) {
         const paid = !request.key || updated?.pagos.some(payment => payment.claveOperacion === request.key)
         if (updated && paid && (!request.closes || (updated.estado === 'CERRADA' && updated.comprobante))) await confirm(updated)
         else { setUncertain(true); setError('No se pudo confirmar la operación. Reintenta el mismo cobro para verificarlo sin duplicarlo.') }
-      } else { pending.current = null; setUncertain(false); setError(err.message); await refresh() }
+      } else { pending.current = null; persistPayment(saleId, null); setUncertain(false); setError(err.message); await refresh() }
     } finally { submitting.current = false; setBusy(false) }
   }
   return <div className="modal-backdrop payment-backdrop" onKeyDown={keydown}>
     <section className="modal payment-modal advanced-payment" role="dialog" aria-modal="true" aria-labelledby="payment-title" tabIndex={-1} ref={dialog}>
       <div className="modal-header"><div><span className="eyebrow">CAJA · CUENTA #{saleId}</span><h2 id="payment-title">{sale?.mesa ? `Cobrar mesa ${sale.mesa.numero}` : 'Cobrar pedido online'}</h2></div><button className="icon-button" disabled={busy || uncertain} onClick={onClose} aria-label="Cerrar pagos"><X size={20} /></button></div>
       {(error || loadError) && <div className="form-error" role="alert">{error || loadError}</div>}{notice && <p className="sale-success" role="status">{notice}</p>}
+      {uncertain && <p role="status" className="payment-hint">Hay un cobro pendiente de comprobar. Se conservará la misma operación al reintentar.</p>}
       {loading ? <p className="loading">Cargando cuenta…</p> : sale && <>
         <div className="payment-summary"><div>Total<strong>S/ {money(sale.total)}</strong></div><div>Abonado<strong>S/ {money(sale.totalPagado)}</strong></div><div>Saldo<strong>S/ {money(saldo)}</strong></div></div>
-        {sale.estado === 'ABIERTA' && <form onSubmit={submit}>
+        {(sale.estado === 'ABIERTA' || uncertain) && <form onSubmit={submit}>
           <ol className="payment-steps" aria-label="Pasos del cobro"><li aria-current={step === 1 ? 'step' : undefined}><b>{step === 2 ? <Check size={14} /> : '1'}</b>Importe y pago</li><li aria-current={step === 2 ? 'step' : undefined}><b>2</b>Comprobante</li></ol>
           <fieldset disabled={busy || uncertain}>
             {step === 1 && saldo > 0 && <><div className="payment-modes" role="group" aria-label="Modalidad de cobro"><button type="button" aria-pressed={mode === 'partial'} onClick={() => setMode('partial')}><Wallet size={17} />Abono / pago anticipado</button><button type="button" aria-pressed={mode === 'total'} onClick={() => setMode('total')}><ReceiptText size={17} />Pago total</button></div>
@@ -125,7 +128,7 @@ export default function PaymentModal({ saleId, onClose, onUpdated }) {
           {totalMode && !complete && <p className="muted">La mesa tiene platos pendientes de entrega. Marca “Entregado” antes de emitir el comprobante.</p>}
           <div className="payment-actions">{step === 2 && <button type="button" className="secondary-button" disabled={busy || uncertain} onClick={() => setStep(1)}><ArrowLeft size={16} />Volver</button>}<button className="primary-button" disabled={busy || (!uncertain && totalMode && !complete)}>{busy ? 'Procesando…' : uncertain ? 'Comprobar / reintentar operación' : !totalMode ? 'Registrar abono' : step === 1 ? <>Continuar a comprobante<ArrowRight size={17} /></> : sale.mesa ? 'Emitir y cerrar mesa' : 'Emitir y finalizar cobro'}</button></div>
         </form>}
-        {sale.comprobante && <p className="sale-success" role="status">{sale.comprobante.tipo} {sale.comprobante.numero} emitida.</p>}
+        {sale.comprobante && <p className="sale-success" role="status">{sale.comprobante.tipoComprobante} {sale.comprobante.numero} emitida.</p>}
         <h3>Historial de pagos</h3><ul className="payment-history">{sale.pagos.map(payment => <li key={payment.id}><div><strong>S/ {money(payment.monto)} · {payment.metodoPago.replace('_', ' / ')}</strong><small>{new Date(payment.fechaPago).toLocaleString('es-PE')} · {payment.registradoPor}</small>{payment.referencia && <small>{payment.referencia}</small>}</div>{Number(payment.vuelto) > 0 && <span>Vuelto S/ {money(payment.vuelto)}</span>}</li>)}</ul>
         {!sale.pagos.length && <p className="muted">Todavía no hay abonos.</p>}
       </>}

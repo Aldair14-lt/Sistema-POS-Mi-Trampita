@@ -90,11 +90,14 @@ def stock(product):
 
 assert all(stock(p) == 3 for p in products)
 # El primer descuento de un adicional debe revertirse si la segunda línea no tiene stock.
-mozo.call("PATCH", f"/api/ventas/{sale['id']}/items", {"items": [
+mozo.call("PATCH", f"/api/ventas/{sale['id']}/items", {"claveOperacion": str(uuid.uuid4()), "items": [
     {"productoId": products[0]["id"], "cantidad": 1}, {"productoId": products[1]["id"], "cantidad": 4}]}, expected=409)
 assert all(stock(p) == 3 for p in products)
-sale = mozo.call("PATCH", f"/api/ventas/{sale['id']}/items", {"items": [{"productoId": products[0]["id"], "cantidad": 1}]})
+additional = {"claveOperacion": str(uuid.uuid4()), "items": [{"productoId": products[0]["id"], "cantidad": 1}]}
+sale = mozo.call("PATCH", f"/api/ventas/{sale['id']}/items", additional)
+sale = mozo.call("PATCH", f"/api/ventas/{sale['id']}/items", additional)
 assert len(sale["detalles"]) == 3 and stock(products[0]) == 2
+assert len([d for d in sale['detalles'] if d['claveComanda'] == additional['claveOperacion']]) == 1
 for path in ("/api/caja/resumen", "/api/operacion/eventos", "/api/ventas/abiertas", "/api/pedidos-online", "/api/mesas", "/api/productos", "/api/marketing"):
     cook.call("GET", path, expected=403)
 cook.call("POST", f"/api/ventas/{sale['id']}/pagos", {}, expected=403)

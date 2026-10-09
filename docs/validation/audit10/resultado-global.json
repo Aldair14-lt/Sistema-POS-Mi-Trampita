@@ -1,0 +1,132 @@
+{
+  "date": "2026-10-08",
+  "java": {
+    "tests": 63,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frontendTests": {
+    "passed": 7,
+    "failed": 0
+  },
+  "osv": {
+    "source": "https://api.osv.dev",
+    "dependencies": 88,
+    "findings": []
+  },
+  "npm": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "http": {
+    "postgresql": "passed",
+    "mysql": "passed"
+  },
+  "schema": {
+    "postgresql": "installation + upgrades 05-10 passed",
+    "mysql": "installation + upgrades 05-10 passed"
+  },
+  "localDatabase": {
+    "schema": "10_comandas_idempotentes",
+    "passwordsStockSalesPaymentsPreserved": true,
+    "backup": ".local/backups/pos_db-before-08-10-20261008-211336.dump"
+  },
+  "browser": {
+    "commercial": {
+      "passed": true,
+      "viewport": [
+        1440,
+        390
+      ],
+      "errors": [],
+      "companyId": 9,
+      "saleId": 27,
+      "checks": [
+        "apertura y arqueo",
+        "Yape parcial",
+        "efectivo y vuelto",
+        "factura A4",
+        "ticket 80mm",
+        "cierre A4",
+        "WhatsApp con adelanto",
+        "Kanban",
+        "cuatro colores de mesas",
+        "CSV Meta",
+        "roles y comandas Cocina/Bar sin precios"
+      ]
+    },
+    "public": {
+      "passed": true,
+      "viewport": [
+        1440,
+        390,
+        320
+      ],
+      "errors": [],
+      "slug": "menu-qa-12505928",
+      "companyId": 11,
+      "requestId": 6,
+      "saleId": 32,
+      "checks": [
+        "menú sin login",
+        "categorías y agotados",
+        "carrito persistente",
+        "recojo y delivery",
+        "móvil sin desborde",
+        "cambio de precio exige actualizar sin perder contacto",
+        "envío con respuesta perdida y reintento después de recargar",
+        "una solicitud y una confirmación",
+        "stock y KDS Cocina/Bar",
+        "seguimiento recibido/confirmado/listo",
+        "publicación y enlace",
+        "sin cookies ni llamadas al POS privado"
+      ]
+    },
+    "recovery": {
+      "passed": true,
+      "errors": [],
+      "saleId": 31,
+      "checks": [
+        "adicional perdido y recarga sin doble stock",
+        "comanda imprime solo nueva tanda",
+        "JSON de pago corrupto y recarga sin doble abono",
+        "precios decimales en CRUD",
+        "almacenamiento restringido sin pantalla vacia"
+      ]
+    }
+  },
+  "pdfs": {
+    "03-factura-a4.pdf": {
+      "pages": 1,
+      "dimensionsMm": [
+        [
+          209.89,
+          297.01
+        ]
+      ]
+    },
+    "04-ticket-80mm.pdf": {
+      "pages": 1,
+      "dimensionsMm": [
+        [
+          80.09,
+          297.01
+        ]
+      ]
+    },
+    "05-cierre-a4.pdf": {
+      "pages": 1,
+      "dimensionsMm": [
+        [
+          209.89,
+          297.01
+        ]
+      ]
+    }
+  }
+}

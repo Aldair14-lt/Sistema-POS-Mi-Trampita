@@ -9,7 +9,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class OperationEventsController {
     private final OperationEvents events;
     @GetMapping(value = "/api/cocina/eventos", produces = "text/event-stream")
-    public SseEmitter kitchen() { return events.subscribe(true); }
+    public SseEmitter kitchen(@org.springframework.security.core.annotation.AuthenticationPrincipal MiTrampita.SistemaPOS.security.PosPrincipal user) {
+        return events.subscribe(true, user.id());
+    }
     @GetMapping(value = "/api/operacion/eventos", produces = "text/event-stream")
-    public SseEmitter operation() { return events.subscribe(false); }
+    public SseEmitter operation(@org.springframework.security.core.annotation.AuthenticationPrincipal MiTrampita.SistemaPOS.security.PosPrincipal user) {
+        return events.subscribe(false, user.id());
+    }
 }

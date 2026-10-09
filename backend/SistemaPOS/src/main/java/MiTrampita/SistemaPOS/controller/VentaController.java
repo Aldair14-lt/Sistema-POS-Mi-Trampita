@@ -56,8 +56,12 @@ public class VentaController {
     @PatchMapping("/{id}/solicitar-cuenta")
     public VentaResponse solicitarCuenta(@PathVariable Integer id) { return VentaResponse.from(service.solicitarCuenta(id)); }
     @PatchMapping("/{id}/items")
-    public VentaResponse agregarItems(@PathVariable Integer id, @Valid @RequestBody ActualizarItemsRequest request) {
-        return VentaResponse.from(service.agregarItems(id, request.items()));
+    public VentaResponse agregarItems(@PathVariable Integer id, @Valid @RequestBody ActualizarItemsRequest request,
+            @AuthenticationPrincipal PosPrincipal principal) {
+        if (!principal.roles().contains("ADMIN") && !principal.roles().contains("CAJA")
+                && service.obtener(id).getOrigenPedido() != OrigenPedido.LOCAL)
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Mozo solo opera pedidos de mesas");
+        return VentaResponse.from(service.agregarItems(id, request.items(), request.claveOperacion()));
     }
     @PatchMapping("/{id}/cerrar")
     public VentaResponse cerrar(@PathVariable Integer id) {

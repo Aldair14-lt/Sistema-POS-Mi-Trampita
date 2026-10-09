@@ -53,7 +53,7 @@ export default function CashierDashboard({ session }) {
     <WebOrdersInbox isAdmin={isAdmin} onAccepted={refresh} />
     {(error || actionError) && <div className="api-error" role="alert">{actionError || error}</div>}
     {alerts.incoming > 0 && <div className="operation-alert" role="status"><span>{alerts.incoming} novedad{alerts.incoming !== 1 ? 'es' : ''}: cuentas solicitadas, pedidos nuevos o platos listos.</span><button onClick={alerts.dismiss}>Entendido</button></div>}
-    {lastReceipt && <div className="operation-alert" role="status"><span>{lastReceipt.comprobante?.tipo} {lastReceipt.comprobante?.numero} emitida.</span><button onClick={() => print(lastReceipt)}><Printer size={15} />Imprimir comprobante</button></div>}
+    {lastReceipt && <div className="operation-alert" role="status"><span>{lastReceipt.comprobante?.tipoComprobante} {lastReceipt.comprobante?.numero} emitida.</span><button onClick={() => print(lastReceipt)}><Printer size={15} />Imprimir comprobante</button></div>}
     {creating && <WhatsAppOrderForm onCancel={() => setCreating(false)} onCreated={() => { setCreating(false); refresh() }} />}
     {loading ? <div className="loading">Cargando caja…</div> : data && <>
       <div className="cashier-metrics"><div><span>Mesas por cobrar</span><strong>{data.mesasPorCobrar.length}</strong><small>Cuenta solicitada por el mozo</small></div><div><span>Pedidos online activos</span><strong>{data.pedidosOnline.length}</strong><small>WhatsApp, Web y recepción</small></div><div><span>Saldo por cobrar</span><strong>S/ {money([...data.mesasPorCobrar, ...data.pedidosOnline].reduce((sum, sale) => sum + Number(sale.saldoPendiente), 0))}</strong><small>Mesas solicitadas y online</small></div></div>

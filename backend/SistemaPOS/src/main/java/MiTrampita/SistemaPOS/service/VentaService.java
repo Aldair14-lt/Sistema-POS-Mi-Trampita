@@ -33,6 +33,7 @@ public class VentaService {
     private final CajaService cajaService;
     private final DetalleVentaRepository detalles;
     private final OperationEvents events;
+    private final OperacionComandaRepository operacionesComanda;
 
     @Transactional(readOnly = true)
     public List<Venta> listar(boolean abiertas) {
@@ -135,11 +136,43 @@ public class VentaService {
 
     @Transactional
     public Venta agregarItems(Integer id, List<ItemRequest> items) {
+        return agregarItems(id, items, null);
+    }
+
+    @Transactional
+    public Venta agregarItems(Integer id, List<ItemRequest> items, String claveOperacion) {
         Venta venta = ventas.findByIdForUpdate(id).orElseThrow(() -> missing("Venta"));
+        String clave = claveOperacion == null ? null : UUID.fromString(claveOperacion).toString();
+        String huella = clave == null ? null : huellaComanda(items);
+        if (clave != null) {
+            var anterior = operacionesComanda.findByVenta_IdAndClaveOperacion(id, clave);
+            if (anterior.isPresent()) {
+                if (!anterior.get().getHuella().equals(huella)) throw conflict("La clave de comanda corresponde a otros productos");
+                cargarCuenta(venta); return venta;
+            }
+        }
         validarAbierta(venta);
         if (venta.getEstadoCuenta() == EstadoCuenta.CERRADA) throw conflict("La cuenta ya está pagada");
+        var anteriores = new HashSet<>(venta.getDetalles());
         agregarLineas(venta, items);
+        if (clave != null) {
+            venta.getDetalles().stream().filter(d -> !anteriores.contains(d)).forEach(d -> d.setClaveComanda(clave));
+            var operacion = new OperacionComanda(); operacion.setVenta(venta); operacion.setClaveOperacion(clave); operacion.setHuella(huella);
+            operacionesComanda.save(operacion);
+        }
+        cargarCuenta(venta);
         return venta;
+    }
+
+    private String huellaComanda(List<ItemRequest> items) {
+        try {
+            var bytes = new java.io.ByteArrayOutputStream(); var out = new java.io.DataOutputStream(bytes);
+            for (var item : items) {
+                out.writeInt(item.productoId()); out.writeInt(item.cantidad());
+                out.writeUTF(item.observaciones() == null ? "" : item.observaciones().trim());
+            }
+            return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
+        } catch (java.io.IOException | java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }
 
     /** El stock sale al enviar cada tanda. Los IDs ordenados evitan bloqueos cruzados. */
@@ -372,7 +405,10 @@ public class VentaService {
         return clientes.save(cliente);
     }
     private void validarCliente(Venta venta) {
-        if (venta.getTipoComprobante().getNombre().toUpperCase(Locale.ROOT).contains("FACTURA")
+        TipoDocumento tipo;
+        try { tipo = TipoDocumento.desdeCatalogo(venta.getTipoComprobante().getNombre()); }
+        catch (IllegalArgumentException ex) { throw bad("Selecciona un tipo de comprobante soportado: NOTA DE VENTA, BOLETA o FACTURA"); }
+        if (tipo == TipoDocumento.FACTURA
                 && (!venta.getCliente().getNumeroDocumento().matches("\\d{11}")
                 || venta.getCliente().getDireccion() == null || venta.getCliente().getDireccion().isBlank()))
             throw bad("Para una factura se requiere RUC de 11 dígitos y dirección fiscal");

@@ -43,5 +43,6 @@ public final class VentaDtos {
             @NotNull @Min(1) @Max(100000) Integer cantidad, @Size(max = 255) String observaciones) {
         public ItemRequest(Integer productoId, Integer cantidad) { this(productoId, cantidad, null); }
     }
-    public record ActualizarItemsRequest(@NotEmpty @Size(max = 200) List<@NotNull @Valid ItemRequest> items) { }
+    public record ActualizarItemsRequest(@NotEmpty @Size(max = 200) List<@NotNull @Valid ItemRequest> items,
+            @NotNull @Pattern(regexp = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}") String claveOperacion) { }
 }

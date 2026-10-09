@@ -7,7 +7,7 @@ const baseURL = process.env.POS_UI_URL || 'http://127.0.0.1:15199'
 assert(/^http:\/\/(127\.0\.0\.1|localhost):/.test(baseURL), 'Usar Vite QA local')
 const password = process.env.POS_TEST_PASSWORD
 assert(password, 'Define POS_TEST_PASSWORD')
-const output = path.resolve(__dirname, '../../docs/validation/public09')
+const output = process.env.POS_VALIDATION_DIR || path.resolve(__dirname, '../../docs/validation/public09')
 
 async function main() {
   await fs.mkdir(output, { recursive: true })

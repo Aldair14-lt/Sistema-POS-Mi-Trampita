@@ -1,0 +1,90 @@
+name: POS quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci && npm test && npm run build && npm audit --audit-level=low
+        working-directory: frontend
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: qa-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: qa-only-password
+          MYSQL_ROOT_HOST: '%'
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    defaults:
+      run:
+        working-directory: backend/SistemaPOS
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Java tests and dependency scan
+        run: |
+          bash mvnw --batch-mode test package
+          bash mvnw --batch-mode dependency:list -DincludeScope=runtime -DoutputFile=target/dependencies-audit.txt
+          python3 scripts/verify_dependencies.py
+      - name: SQL installation and historical data preservation
+        env:
+          DB_PASSWORD: qa-only-password
+        run: |
+          DB_USERNAME=postgres python3 scripts/verify_schema_05.py --engine postgresql --database pos_kds_qa_ci_pg
+          DB_USERNAME=root python3 scripts/verify_schema_05.py --engine mysql --database pos_kds_qa_ci_mysql
+      - name: Real HTTP flows on both engines
+        env:
+          DB_PASSWORD: qa-only-password
+          POS_TEST_PASSWORD: AdminPOS#2026
+        run: |
+          set -euo pipefail
+          DB_USERNAME=postgres DB_DRIVER=org.postgresql.Driver DB_URL=jdbc:postgresql://localhost:5432/pos_kds_qa_ci_pg_full SERVER_PORT=19098 java -jar target/SistemaPOS-0.0.1-SNAPSHOT.jar >target/qa-pg.log 2>&1 &
+          pg_pid=$!
+          DB_USERNAME=root DB_DRIVER=com.mysql.cj.jdbc.Driver DB_URL=jdbc:mysql://127.0.0.1:3306/pos_kds_qa_ci_mysql_full SERVER_PORT=19099 java -jar target/SistemaPOS-0.0.1-SNAPSHOT.jar >target/qa-mysql.log 2>&1 &
+          mysql_pid=$!
+          trap 'kill "$pg_pid" "$mysql_pid" 2>/dev/null || true' EXIT
+          for port in 19098 19099; do
+            ready=false
+            for attempt in $(seq 1 60); do
+              if curl --fail --silent "http://127.0.0.1:$port/api/auth/csrf" >/dev/null; then ready=true; break; fi
+              sleep 1
+            done
+            if [ "$ready" != true ]; then tail -80 target/qa-*.log; exit 1; fi
+            python3 scripts/verify_http_flow.py --url "http://127.0.0.1:$port"
+            python3 scripts/verify_public_orders.py --url "http://127.0.0.1:$port" --qa
+          done

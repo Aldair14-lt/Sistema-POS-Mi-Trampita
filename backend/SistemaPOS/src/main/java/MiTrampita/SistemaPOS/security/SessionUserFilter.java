@@ -24,7 +24,8 @@ public class SessionUserFilter extends OncePerRequestFilter {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof PosPrincipal principal) {
             var user = usuarios.findById(principal.id()).orElse(null);
-            if (user == null || user.getEstado() != EstadoUsuario.activo) {
+            if (user == null || user.getEstado() != EstadoUsuario.activo
+                    || !SessionCredentials.matches(request.getSession(false), user.getContrasena())) {
                 SecurityContextHolder.clearContext();
                 if (request.getSession(false) != null) request.getSession(false).invalidate();
             } else {

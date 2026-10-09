@@ -53,6 +53,8 @@ migration07, migration08 = migration07.split('-- 08. TURNOS DE CAJA Y KDS ENRUTA
 migration08 = migration08.split('\n', 1)[1]
 migration08, migration09 = migration08.split('-- 09. MENU PUBLICO Y RECEPCION WEB.', 1)
 migration09 = migration09.split('\n', 1)[1]
+migration09, migration10 = migration09.split('-- 10. COMANDAS ADICIONALES IDEMPOTENTES.', 1)
+migration10 = migration10.split('\n', 1)[1]
 if not pg:
     base = base.replace('`pos_db`', '`' + args.database + '`')
 run(base, args.database)
@@ -158,6 +160,9 @@ run("""INSERT INTO sesiones_caja(id_empresa,empresa_abierta,abierto_por,fecha_ap
  FROM empresa e,usuario u WHERE e.ruc='20999999991' AND u.usuario='admin';""", args.database, fail=True)
 assert run('SELECT COUNT(*) FROM sesiones_caja;', args.database) == '1'
 
+assert 'Primero aplica' in run(migration10, args.database, fail=True)
+if not pg:
+    run('DROP PROCEDURE IF EXISTS migrar_pos_10;', args.database)
 run(migration09, args.database)
 assert run('SELECT COUNT(*) FROM producto WHERE visible_web;', args.database) == '0'
 assert run('SELECT COUNT(*) FROM tiendas_web;', args.database) == '0'
@@ -169,6 +174,16 @@ assert run('SELECT id_usuario, "contraseña" FROM usuario ORDER BY id_usuario;' 
 assert 'ya fue aplicada' in run(migration09, args.database, fail=True)
 if not pg:
     run('DROP PROCEDURE IF EXISTS migrar_pos_09;', args.database)
+
+run(migration10, args.database)
+assert run('SELECT COUNT(*) FROM operaciones_comanda;', args.database) == '0'
+assert run('SELECT COUNT(*) FROM detalle_venta WHERE clave_comanda IS NOT NULL;', args.database) == '0'
+assert run("SELECT stock_actual FROM producto WHERE codigo_barras='QA-MIG';", args.database) == '8'
+assert run('SELECT id_usuario, "contraseña" FROM usuario ORDER BY id_usuario;' if pg else
+           'SELECT id_usuario, `contraseña` FROM usuario ORDER BY id_usuario;', args.database) == usuarios_antes
+assert 'ya fue aplicada' in run(migration10, args.database, fail=True)
+if not pg:
+    run('DROP PROCEDURE IF EXISTS migrar_pos_10;', args.database)
 
 # La instalación completa también debe funcionar ejecutando un solo archivo.
 full_database = args.database + '_full'
@@ -185,4 +200,6 @@ assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='08_turnos_caja_k
 assert run('SELECT COUNT(*) FROM sesiones_caja;', full_database) == '0'
 assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='09_menu_publico_pedidos_web';", full_database) == '1'
 assert run('SELECT COUNT(*) FROM tiendas_web;', full_database) == '0'
-print(f'PASS {args.engine}: instalación completa, migraciones 05/06/07/08/09, históricos, contraseñas preservadas, turno único, destinos y reejecución protegida. BD: {args.database}')
+assert run("SELECT COUNT(*) FROM pos_migraciones WHERE version='10_comandas_idempotentes';", full_database) == '1'
+assert run('SELECT COUNT(*) FROM operaciones_comanda;', full_database) == '0'
+print(f'PASS {args.engine}: instalación completa, migraciones 05/06/07/08/09/10, históricos, contraseñas preservadas, turno único, destinos y reejecución protegida. BD: {args.database}')

@@ -28,15 +28,23 @@ public class UsuarioController {
     public UsuarioResponse actualizar(@PathVariable Integer id, @Valid @RequestBody UsuarioRequest request) { return guardar(id, request); }
     @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminar(@PathVariable Integer id) {
+        roles.lockAdministratorRole().orElseThrow();
         var user = usuarios.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+        protectLastAdministrator(user, false);
         relaciones.deleteAllByUsuario_Id(id);
         usuarios.delete(user);
     }
 
     private UsuarioResponse guardar(Integer id, UsuarioRequest req) {
+        roles.lockAdministratorRole().orElseThrow();
         var user = id == null ? new Usuario() : usuarios.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
         var requestedRoles = roles.findAllById(req.rolIds());
+        usuarios.findByUsuarioIgnoreCase(req.usuario().trim()).filter(u -> !u.getId().equals(id)).ifPresent(u -> {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe un usuario con ese nombre");
+        });
+        if (id != null) protectLastAdministrator(user, req.estado() == EstadoUsuario.activo
+            && requestedRoles.stream().anyMatch(r -> MiTrampita.SistemaPOS.security.PosPrincipal.canonicalRole(r.getNombre()).equals("ADMIN")));
         if (requestedRoles.size() != new HashSet<>(req.rolIds()).size()
                 || requestedRoles.stream().anyMatch(r -> !Set.of("ADMIN", "MOZO", "CAJA", "COCINERO", "BARTENDER").contains(r.getNombre())))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecciona roles ADMIN, MOZO, CAJA, COCINERO o BARTENDER válidos");
@@ -66,6 +74,12 @@ public class UsuarioController {
                 .filter(r -> Set.of("ADMIN", "MOZO", "CAJA", "COCINERO", "BARTENDER").contains(r.getRol().getNombre())).toList();
         return new UsuarioResponse(u.getId(), u.getUsuario(), u.getNombreCompleto(), u.getCorreoElectronico(), u.getEstado(),
                 assigned.stream().map(r -> r.getRol().getId()).toList(), assigned.stream().map(r -> r.getRol().getNombre()).toList());
+    }
+    private void protectLastAdministrator(Usuario user, boolean remainsAdministrator) {
+        boolean currentAdministrator = user.getEstado() == EstadoUsuario.activo && relaciones.findAllByUsuario_Id(user.getId()).stream()
+            .anyMatch(r -> MiTrampita.SistemaPOS.security.PosPrincipal.canonicalRole(r.getRol().getNombre()).equals("ADMIN"));
+        if (currentAdministrator && !remainsAdministrator && relaciones.countActiveAdministrators() <= 1)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Conserva al menos un administrador activo");
     }
     public record UsuarioRequest(@NotBlank @Size(max = 50) String usuario, @Size(max = 72) String contrasena,
             @NotBlank @Size(max = 150) String nombreCompleto, @Email @Size(max = 100) String correoElectronico,

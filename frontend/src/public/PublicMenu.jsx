@@ -11,9 +11,9 @@ const terminal = new Set(['ENTREGADO', 'RECHAZADO', 'EXPIRADO', 'CANCELADO'])
 export default function PublicMenu({ slug }) {
   const key = `trampita-cart-${slug}`; const pendingKey = `trampita-pending-${slug}`
   const [menu, setMenu] = useState(null); const [error, setError] = useState(''); const [loading, setLoading] = useState(true)
-  const [cart, setCart] = useState(() => { const saved = storageRead(sessionStorage, pendingKey, null)?.items || storageRead(localStorage, key, []); return Array.isArray(saved) ? saved.filter(i => Number.isInteger(i?.productoId) && Number.isInteger(i?.cantidad) && i.cantidad > 0 && i.cantidad <= 20).slice(0, 30) : [] })
+  const [cart, setCart] = useState(() => { const saved = storageRead('sessionStorage', pendingKey, null)?.items || storageRead('localStorage', key, []); return Array.isArray(saved) ? saved.filter(i => Number.isInteger(i?.productoId) && Number.isInteger(i?.cantidad) && i.cantidad > 0 && i.cantidad <= 20).slice(0, 30) : [] })
   const [query, setQuery] = useState(''); const [category, setCategory] = useState('Todos'); const [checkout, setCheckout] = useState(false)
-  const pending = useRef(storageRead(sessionStorage, pendingKey, null)); const submitting = useRef(false)
+  const pending = useRef(storageRead('sessionStorage', pendingKey, null)); const submitting = useRef(false)
   const [busy, setBusy] = useState(false); const [uncertain, setUncertain] = useState(Boolean(pending.current)); const [sendError, setSendError] = useState('')
   const [code, setCode] = useState(() => new URLSearchParams(window.location.search).get('pedido'))
   const [status, setStatus] = useState(null); const [statusError, setStatusError] = useState('')
@@ -22,7 +22,7 @@ export default function PublicMenu({ slug }) {
     try { setMenu(await publicApi.menu(slug)); setSendError('') } catch (e) { setError(e.message) } finally { setLoading(false) }
   }, [slug])
   useEffect(() => { loadMenu() }, [loadMenu])
-  useEffect(() => { storageWrite(localStorage, key, cart) }, [cart, key])
+  useEffect(() => { storageWrite('localStorage', key, cart) }, [cart, key])
   useEffect(() => { document.title = menu ? `${menu.nombre} · Pide a tu gusto` : 'Recreo Mi Trampita · Pedidos' }, [menu])
   useEffect(() => {
     if (!menu) return
@@ -56,15 +56,15 @@ export default function PublicMenu({ slug }) {
     if (!pending.current) {
       pending.current = { claveOperacion: operationId(), nombre: customer.nombre.trim(), dni: customer.dni, telefono: customer.telefono.trim(), tipoEntrega: customer.tipoEntrega,
         direccion: customer.tipoEntrega === 'DELIVERY' ? customer.direccion.trim() : '', observaciones: customer.observaciones.trim(), items: cart.map(i => ({ ...i })), totalEsperado: cartTotal(cart, menu.productos) }
-      storageWrite(sessionStorage, pendingKey, pending.current)
+      storageWrite('sessionStorage', pendingKey, pending.current)
     }
       const result = await publicApi.send(slug, pending.current)
-      pending.current = null; storageWrite(sessionStorage, pendingKey, null); setCart([]); setUncertain(false); setCheckout(false); setStatus(result); setCode(result.codigoSeguimiento)
+      pending.current = null; storageWrite('sessionStorage', pendingKey, null); setCart([]); setUncertain(false); setCheckout(false); setStatus(result); setCode(result.codigoSeguimiento)
       window.history.replaceState(null, '', `${window.location.pathname}?pedido=${result.codigoSeguimiento}`); window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (e) {
       setSendError(e.message)
       if (e.status === 0 || e.status >= 500) { setUncertain(true); setSendError(`${e.message} Tu envío está pendiente de comprobar; reintenta el mismo pedido.`) }
-      else { pending.current = null; storageWrite(sessionStorage, pendingKey, null); setUncertain(false) }
+      else { pending.current = null; storageWrite('sessionStorage', pendingKey, null); setUncertain(false) }
     } finally { submitting.current = false; setBusy(false) }
   }
   const newOrder = () => { setCode(null); setStatus(null); setStatusError(''); window.history.replaceState(null, '', window.location.pathname); loadMenu() }

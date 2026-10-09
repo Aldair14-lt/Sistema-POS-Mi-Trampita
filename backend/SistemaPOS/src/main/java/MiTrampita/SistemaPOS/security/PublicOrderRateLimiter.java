@@ -10,12 +10,19 @@ import java.util.*;
 public class PublicOrderRateLimiter {
     private record Ventana(long inicio, int intentos) { }
     private final Map<String, Ventana> ventanas = new HashMap<>();
+    private final Map<String, Ventana> lecturas = new HashMap<>();
     public synchronized void validar(String direccion) {
+        validar(direccion, ventanas, 10);
+    }
+    public synchronized void validarLectura(String direccion) {
+        validar(direccion, lecturas, 120);
+    }
+    private void validar(String direccion, Map<String, Ventana> registro, int maximo) {
         long ahora = System.nanoTime(); long minuto = 60_000_000_000L;
-        ventanas.entrySet().removeIf(e -> ahora - e.getValue().inicio() >= minuto);
-        var ventana = ventanas.get(direccion);
-        if ((ventana == null && ventanas.size() >= 10000) || (ventana != null && ventana.intentos() >= 10))
+        registro.entrySet().removeIf(e -> ahora - e.getValue().inicio() >= minuto);
+        var ventana = registro.get(direccion);
+        if ((ventana == null && registro.size() >= 10000) || (ventana != null && ventana.intentos() >= maximo))
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos. Espera un minuto y vuelve a intentar");
-        ventanas.put(direccion, new Ventana(ventana == null ? ahora : ventana.inicio(), ventana == null ? 1 : ventana.intentos() + 1));
+        registro.put(direccion, new Ventana(ventana == null ? ahora : ventana.inicio(), ventana == null ? 1 : ventana.intentos() + 1));
     }
 }
